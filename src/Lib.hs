@@ -3,8 +3,7 @@ module Lib
   )
 where
 
--- import qualified Chap1 as Chap1
-import qualified Chap2.Driver as Chap2
+import qualified Chap1 as Chap1
 
 runApp :: IO ()
-runApp = Chap2.runApp
+runApp = Chap1.runApp
