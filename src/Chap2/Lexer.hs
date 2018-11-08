@@ -9,7 +9,7 @@ import Text.Megaparsec.Char
 
 import qualified Text.Megaparsec.Char.Lexer as L
 
-type Parser = Parsec Void String
+type Parser = ParsecT Void String IO
 
 sc :: Parser ()
 sc = L.space (space1 <|> void tab) empty blockCmnt

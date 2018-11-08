@@ -1,9 +1,10 @@
 module Chap3.AST where
 
 import Data.IORef
+import Text.Megaparsec (SourcePos)
 
 newtype Symbol = Symbol String deriving (Show, Eq)
-type Pos = Int
+type Pos = SourcePos
 
 data Var = SimpleVar Symbol Pos
          | FieldVar Var Symbol Pos
@@ -78,8 +79,8 @@ data Dec = FunctionDec [FunDec]
 
 data Field = Field
   { _name   :: Symbol
-  , _escape :: IORef Bool
   , _type   :: Symbol
+  , _escape :: IORef Bool
   , _pos    :: Pos
   }
 
@@ -93,9 +94,9 @@ data FunDec = FunDec
 
 data VarDec' = VarDec'
   { _name   :: Symbol
-  , _escape :: IORef Bool
   , _type   :: Maybe (Symbol, Pos)
   , _init   :: Exp
+  , _escape :: IORef Bool
   , _pos    :: Pos
   }
 
