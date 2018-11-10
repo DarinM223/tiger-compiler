@@ -3,6 +3,7 @@ module Chap3.Parser where
 import Chap2.Lexer
 import Chap3.AST
 import Control.Monad.IO.Class
+import Data.Void
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char
 
@@ -24,7 +25,7 @@ tyfield = getPosition >>= \pos
        -> Field
       <$> ident
       <*> ident
-      <*> (liftIO $ mkEscape)
+      <*> liftIO mkEscape
       <*> pure pos
 
 vardec :: Parser VarDec'
@@ -36,7 +37,7 @@ vardec = getPosition >>= \pos
                        <$> (rword "var" *> ident)
                        <*> parseAnnot
                        <*> (symbol ":=" *> expr)
-                       <*> (liftIO $ mkEscape)
+                       <*> liftIO mkEscape
                        <*> pure pos
 
 fundec :: Parser FunDec
@@ -51,27 +52,50 @@ fundec = getPosition >>= \pos
     <*> (symbol "=" *> expr)
     <*> pure pos
 
--- Left factoring grammar:
+-- Left factoring lvalue grammar:
 --
 -- lvalue -> id
 --        -> lvalue . id
 --        -> lvalue [exp]
 --
 -- b = { id }
--- a = { id, [exp }
+-- a = { id, exp }
 --
 -- A -> b1A' | ... | bmA'
 -- A' -> a1A' | ... | anA' | e
 --
 -- A -> id A'
--- A' -> id A' | [exp] A' | e
-lvalue :: Parser Var
-lvalue = getPosition >>= \pos
-      -> (SimpleVar <$> ident <*> pure pos)
-     <|> (FieldVar <$> lvalue <*> (symbol "." *> ident) <*> pure pos)
-     <|> (SubscriptVar <$> lvalue
-                       <*> (symbol "[" *> expr <* symbol "]")
-                       <*> pure pos)
+-- A' -> . id A' | [exp] A' | e
+data LFVar = LFVarId !Symbol !Pos LFVar' deriving (Show)
+data LFVar' = LFVarId' !Symbol !Pos LFVar'
+            | LFVarExpr !Exp !Pos LFVar'
+            | LFVarNil
+            deriving (Show)
+
+-- | Converts the left factored lvalue ast to the proper ast.
+toVar :: LFVar -> Var
+toVar (LFVarId sym pos rest) = toVar' (SimpleVar sym pos) rest
+ where
+  -- TODO(DarinM223): make sure this is building strictly (look into deepseq)
+  toVar' :: Var -> LFVar' -> Var
+  toVar' !build = \case
+    LFVarNil                  -> build
+    (LFVarId' sym pos rest)   -> toVar' (FieldVar build sym pos) rest
+    (LFVarExpr expr pos rest) -> toVar' (SubscriptVar build expr pos) rest
+
+-- | Parses the left factored grammar for lvalues.
+lfvar :: Parser LFVar
+lfvar = getPosition >>= \pos -> LFVarId <$> ident <*> pure pos <*> lfvar'
+ where
+  lfvar' = getPosition >>= \pos
+        -> (LFVarId' <$> (symbol "." *> ident) <*> pure pos <*> lfvar')
+       <|> (LFVarExpr <$> (symbol "[" *> expr <* symbol "]")
+                      <*> pure pos
+                      <*> lfvar')
+       <|> pure LFVarNil
+
+var :: Parser Var
+var = toVar <$> lfvar
 
 call :: Parser CallExp'
 call = getPosition >>= \pos
@@ -103,7 +127,7 @@ expr = getPosition >>= \pos
    <|> (IntExp <$> integer)
    <|> (StringExp <$> string'' <*> pure pos)
    <|> (CallExp <$> try call)
-   <|> (VarExp <$> lvalue)
+   <|> (VarExp <$> var)
 
 annot :: Parser (Symbol, Pos)
 annot = getPosition >>= \pos -> (,) <$> (symbol ":" *> ident) <*> pure pos
@@ -113,3 +137,10 @@ ident = Symbol <$> identifier
 
 parseExpr :: Parser Exp
 parseExpr = sc *> expr <* eof
+
+-- This should not return Left.
+testParseCall :: IO (Either (ParseError (Token String) Void) Exp)
+testParseCall = runParserT
+  parseExpr
+  ""
+  "foo(hello.bar, blah[boo], hello.world[bob])"

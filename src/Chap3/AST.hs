@@ -11,7 +11,7 @@ instance Show Escape where
     show _ = ""
 
 mkEscape :: IO Escape
-mkEscape = Escape <$> (newIORef False)
+mkEscape = Escape <$> newIORef False
 
 data Var = SimpleVar Symbol Pos
          | FieldVar Var Symbol Pos
