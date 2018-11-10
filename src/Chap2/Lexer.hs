@@ -71,5 +71,5 @@ singleEscChars = "nt\\\""
 escapeLookupTable :: [(Char, Char)]
 escapeLookupTable = [('n', '\n'), ('t', '\t'), ('\\', '\\'), ('\"', '\"')]
 
-whileParser :: Parser String
-whileParser = sc *> string'' <* eof
+whileParser :: Parser [String]
+whileParser = sc *> sepBy identifier (sc *> char ',' *> sc) <* eof
