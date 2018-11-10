@@ -3,6 +3,7 @@ module Chap3.Parser where
 import Chap2.Lexer
 import Chap3.AST
 import Control.Monad.IO.Class
+import Control.Monad.Combinators.Expr
 import Data.Void
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char
@@ -104,6 +105,32 @@ call = getPosition >>= \pos
    <*> (symbol "(" *> sepBy expr (sc *> char ',' *> sc) <* symbol ")")
    <*> pure pos
 
+seq' :: Parser [(Exp, Pos)]
+seq' = sepBy parseExp (sc *> char ';' *> sc)
+ where
+  parseExp = getPosition >>= \pos -> (,) <$> expr <*> pure pos
+
+{-data Op = PlusOp | MinusOp | TimesOp | DivideOp-}
+{-        | EqOp | NeqOp | LtOp | LeOp | GtOp | GeOp-}
+{-        deriving (Show, Eq)-}
+
+opExp :: Parser Exp
+opExp = makeExprParser term operators
+ where
+  term = IntExp <$> integer
+
+  unOp op parser = Prefix $
+    (\pos exp -> OpExp (IntExp 0) op exp pos) <$> (getPosition <* parser)
+  binOp op parser = InfixL $
+    (\pos exp1 exp2 -> OpExp exp1 op exp2 pos) <$> (getPosition <* parser)
+
+  operators = [ [unOp MinusOp (symbol "-")]
+              , [binOp TimesOp (symbol "*")]
+              , [binOp DivideOp (symbol "/")]
+              , [binOp PlusOp (symbol "+")]
+              , [binOp MinusOp (symbol "-")]
+              ]
+
 {-data Exp = VarExp Var-}
 {-         | NilExp-}
 {-         | IntExp Int-}
@@ -124,9 +151,11 @@ call = getPosition >>= \pos
 expr :: Parser Exp
 expr = getPosition >>= \pos
     -> (NilExp <$ rword "nil")
+   <|> try opExp
    <|> (IntExp <$> integer)
    <|> (StringExp <$> string'' <*> pure pos)
    <|> (CallExp <$> try call)
+   <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
    <|> (VarExp <$> var)
 
 annot :: Parser (Symbol, Pos)
