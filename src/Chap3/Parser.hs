@@ -117,7 +117,12 @@ seq' = sepBy parseExp (sc *> char ';' *> sc)
 opExp :: Parser Exp
 opExp = makeExprParser term operators
  where
-  term = IntExp <$> integer
+  term = sc *> term' <* sc
+  term' = (IntExp <$> integer)
+      <|> (StringExp <$> getPosition <*> string'')
+      <|> (CallExp <$> try call)
+      <|> (VarExp <$> var)
+      <|> (symbol "(" *> expr <* symbol ")")
 
   unOp op parser = Prefix $
     (\pos exp -> OpExp (IntExp 0) op exp pos) <$> (getPosition <* parser)
@@ -149,12 +154,12 @@ opExp = makeExprParser term operators
 {-         | LValueExp LValue-}
 
 expr :: Parser Exp
-expr = getPosition >>= \pos
-    -> (NilExp <$ rword "nil")
+expr = (NilExp <$ rword "nil")
    <|> try opExp
    <|> (IntExp <$> integer)
-   <|> (StringExp <$> string'' <*> pure pos)
+   <|> (StringExp <$> getPosition <*> string'')
    <|> (CallExp <$> try call)
+   <|> try (symbol "(" *> expr <* symbol ")")
    <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
    <|> (VarExp <$> var)
 

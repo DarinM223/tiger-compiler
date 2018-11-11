@@ -21,7 +21,7 @@ data Var = SimpleVar Symbol Pos
 data Exp = VarExp Var
          | NilExp
          | IntExp Int
-         | StringExp String Pos
+         | StringExp Pos String
          | CallExp CallExp'
          | OpExp Exp Op Exp Pos
          | RecordExp RecordExp'
