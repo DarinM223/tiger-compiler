@@ -25,7 +25,7 @@ data Exp = VarExp Var
          | CallExp CallExp'
          | OpExp Exp Op Exp Pos
          | RecordExp RecordExp'
-         | SeqExp [(Exp, Pos)]
+         | SeqExp [(Pos, Exp)]
          | AssignExp Var Exp Pos
          | IfExp IfExp'
          | WhileExp WhileExp'
@@ -37,15 +37,15 @@ data Exp = VarExp Var
          deriving (Show)
 
 data CallExp' = CallExp'
-  { _func :: Symbol
+  { _pos  :: Pos
+  , _func :: Symbol
   , _args :: [Exp]
-  , _pos  :: Pos
   } deriving (Show)
 
 data RecordExp' = RecordExp'
-  { _fields :: [(Symbol, Exp, Pos)]
+  { _pos    :: Pos
   , _type   :: Symbol
-  , _pos    :: Pos
+  , _fields :: [(Pos, Symbol, Exp)]
   } deriving (Show)
 
 data IfExp' = IfExp'
@@ -89,10 +89,10 @@ data Dec = FunctionDec [FunDec]
          deriving (Show)
 
 data Field = Field
-  { _name   :: Symbol
+  { _pos    :: Pos
+  , _name   :: Symbol
   , _type   :: Symbol
   , _escape :: Escape
-  , _pos    :: Pos
   } deriving (Show)
 
 data FunDec = FunDec
@@ -112,9 +112,9 @@ data VarDec' = VarDec'
   } deriving (Show)
 
 data TypeDec' = TypeDec'
-  { _name :: Symbol
+  { _pos  :: Pos
+  , _name :: Symbol
   , _ty   :: Ty
-  , _pos  :: Pos
   } deriving (Show)
 
 data Ty = NameTy Symbol Pos
@@ -124,4 +124,5 @@ data Ty = NameTy Symbol Pos
 
 data Op = PlusOp | MinusOp | TimesOp | DivideOp
         | EqOp | NeqOp | LtOp | LeOp | GtOp | GeOp
+        | AndOp | OrOp
         deriving (Show, Eq)

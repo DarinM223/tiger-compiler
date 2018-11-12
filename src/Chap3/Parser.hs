@@ -8,26 +8,27 @@ import Data.Void
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char
 
+sepCh :: Char -> Parser ()
+sepCh c = sc *> char c *> sc
+
 typedec :: Parser TypeDec'
-typedec = getPosition >>= \pos
-       -> TypeDec'
-      <$> (rword "type" *> ident)
+typedec = TypeDec'
+      <$> getPosition
+      <*> (rword "type" *> ident)
       <*> (symbol "=" *> ty)
-      <*> pure pos
 
 ty :: Parser Ty
 ty = getPosition >>= \pos
   -> (ArrayTy <$> (rword "array" *> rword "of" *> ident) <*> pure pos)
- <|> (RecordTy <$> (symbol "{" *> sepBy1 tyfield (char ',') <* symbol "}"))
+ <|> (RecordTy <$> (symbol "{" *> sepBy1 tyfield (sepCh ',') <* symbol "}"))
  <|> (NameTy <$> ident <*> pure pos)
 
 tyfield :: Parser Field
-tyfield = getPosition >>= \pos
-       -> Field
-      <$> ident
+tyfield = Field
+      <$> getPosition
+      <*> ident
       <*> ident
       <*> liftIO mkEscape
-      <*> pure pos
 
 vardec :: Parser VarDec'
 vardec = getPosition >>= \pos
@@ -48,7 +49,7 @@ fundec = getPosition >>= \pos
  where
   fundec' parseAnnot pos = FunDec
     <$> (rword "function" *> ident)
-    <*> (symbol "(" *> sepBy1 tyfield (char ',') <* symbol ")")
+    <*> (symbol "(" *> sepBy1 tyfield (sepCh ',') <* symbol ")")
     <*> parseAnnot
     <*> (symbol "=" *> expr)
     <*> pure pos
@@ -99,20 +100,15 @@ var :: Parser Var
 var = toVar <$> lfvar
 
 call :: Parser CallExp'
-call = getPosition >>= \pos
-    -> CallExp'
-   <$> ident
-   <*> (symbol "(" *> sepBy expr (sc *> char ',' *> sc) <* symbol ")")
-   <*> pure pos
+call = CallExp'
+   <$> getPosition
+   <*> ident
+   <*> (symbol "(" *> sepBy expr (sepCh ',') <* symbol ")")
 
-seq' :: Parser [(Exp, Pos)]
-seq' = sepBy parseExp (sc *> char ';' *> sc)
+seq' :: Parser [(Pos, Exp)]
+seq' = sepBy parseExp (sepCh ';')
  where
-  parseExp = getPosition >>= \pos -> (,) <$> expr <*> pure pos
-
-{-data Op = PlusOp | MinusOp | TimesOp | DivideOp-}
-{-        | EqOp | NeqOp | LtOp | LeOp | GtOp | GeOp-}
-{-        deriving (Show, Eq)-}
+  parseExp = (,) <$> getPosition <*> expr
 
 opExp :: Parser Exp
 opExp = makeExprParser term operators
@@ -126,15 +122,33 @@ opExp = makeExprParser term operators
 
   unOp op parser = Prefix $
     (\pos exp -> OpExp (IntExp 0) op exp pos) <$> (getPosition <* parser)
-  binOp op parser = InfixL $
+  binOp ifix op parser = ifix $
     (\pos exp1 exp2 -> OpExp exp1 op exp2 pos) <$> (getPosition <* parser)
 
   operators = [ [unOp MinusOp (symbol "-")]
-              , [binOp TimesOp (symbol "*")]
-              , [binOp DivideOp (symbol "/")]
-              , [binOp PlusOp (symbol "+")]
-              , [binOp MinusOp (symbol "-")]
+              , [binOp InfixL TimesOp (symbol "*")]
+              , [binOp InfixL DivideOp (symbol "/")]
+              , [binOp InfixL PlusOp (symbol "+")]
+              , [binOp InfixL MinusOp (symbol "-")]
+              , [binOp InfixN EqOp (symbol "=")]
+              , [binOp InfixN NeqOp (symbol "<>")]
+              , [binOp InfixN GtOp (symbol ">")]
+              , [binOp InfixN LtOp (symbol "<")]
+              , [binOp InfixN GeOp (symbol ">=")]
+              , [binOp InfixN LeOp (symbol "<=")]
+              -- TODO(DarinM223): figure out what infix & and | are
+              -- supposed to be (it does not clearly state in the spec).
+              , [binOp InfixL AndOp (symbol "&")]
+              , [binOp InfixL OrOp (symbol "|")]
               ]
+
+record :: Parser RecordExp'
+record = RecordExp'
+  <$> getPosition
+  <*> ident
+  <*> (symbol "{" *> sepBy recfield (sepCh ',') <* symbol "}")
+ where
+  recfield = (,,) <$> getPosition <*> ident <*> (symbol "=" *> expr)
 
 {-data Exp = VarExp Var-}
 {-         | NilExp-}
@@ -155,11 +169,12 @@ opExp = makeExprParser term operators
 
 expr :: Parser Exp
 expr = (NilExp <$ rword "nil")
-   <|> try opExp
    <|> (IntExp <$> integer)
    <|> (StringExp <$> getPosition <*> string'')
+   <|> (RecordExp <$> try record)
    <|> (CallExp <$> try call)
    <|> try (symbol "(" *> expr <* symbol ")")
+   <|> try opExp
    <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
    <|> (VarExp <$> var)
 
