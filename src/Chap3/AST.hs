@@ -26,7 +26,7 @@ data Exp = VarExp Var
          | OpExp Exp Op Exp Pos
          | RecordExp RecordExp'
          | SeqExp [(Pos, Exp)]
-         | AssignExp Var Exp Pos
+         | AssignExp Pos Var Exp
          | IfExp IfExp'
          | WhileExp WhileExp'
          | ForExp ForExp'
@@ -49,10 +49,10 @@ data RecordExp' = RecordExp'
   } deriving (Show)
 
 data IfExp' = IfExp'
-  { _test  :: Exp
+  { _pos   :: Pos
+  , _test  :: Exp
   , _then' :: Exp
   , _else' :: Maybe Exp
-  , _pos   :: Pos
   } deriving (Show)
 
 data WhileExp' = WhileExp'
@@ -77,10 +77,10 @@ data LetExp' = LetExp'
   } deriving (Show)
 
 data ArrayExp' = ArrayExp'
-  { _type :: Symbol
+  { _pos  :: Pos
+  , _type :: Symbol
   , _size :: Exp
   , _init :: Exp
-  , _pos  :: Pos
   } deriving (Show)
 
 data Dec = FunctionDec [FunDec]
@@ -96,19 +96,19 @@ data Field = Field
   } deriving (Show)
 
 data FunDec = FunDec
-  { _name   :: Symbol
+  { _pos    :: Pos
+  , _name   :: Symbol
   , _params :: [Field]
-  , _result :: Maybe (Symbol, Pos)
+  , _result :: Maybe (Pos, Symbol)
   , _body   :: Exp
-  , _pos    :: Pos
   } deriving (Show)
 
 data VarDec' = VarDec'
-  { _name   :: Symbol
-  , _type   :: Maybe (Symbol, Pos)
+  { _pos    :: Pos
+  , _name   :: Symbol
+  , _type   :: Maybe (Pos, Symbol)
   , _init   :: Exp
   , _escape :: Escape
-  , _pos    :: Pos
   } deriving (Show)
 
 data TypeDec' = TypeDec'

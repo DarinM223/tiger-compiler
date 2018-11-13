@@ -27,32 +27,24 @@ tyfield :: Parser Field
 tyfield = Field
       <$> getPosition
       <*> ident
-      <*> ident
+      <*> (symbol ":" *> ident)
       <*> liftIO mkEscape
 
 vardec :: Parser VarDec'
-vardec = getPosition >>= \pos
-      -> vardec' (Just <$> annot) pos
-     <|> vardec' (pure Nothing) pos
- where
-  vardec' parseAnnot pos = VarDec'
-                       <$> (rword "var" *> ident)
-                       <*> parseAnnot
-                       <*> (symbol ":=" *> expr)
-                       <*> liftIO mkEscape
-                       <*> pure pos
+vardec = VarDec'
+     <$> getPosition
+     <*> (rword "var" *> ident)
+     <*> optional (try annot)
+     <*> (symbol ":=" *> expr)
+     <*> liftIO mkEscape
 
 fundec :: Parser FunDec
-fundec = getPosition >>= \pos
-      -> fundec' (Just <$> annot) pos
-     <|> fundec' (pure Nothing) pos
- where
-  fundec' parseAnnot pos = FunDec
-    <$> (rword "function" *> ident)
-    <*> (symbol "(" *> sepBy1 tyfield (sepCh ',') <* symbol ")")
-    <*> parseAnnot
-    <*> (symbol "=" *> expr)
-    <*> pure pos
+fundec = FunDec
+     <$> getPosition
+     <*> (rword "function" *> ident)
+     <*> (symbol "(" *> sepBy tyfield (sepCh ',') <* symbol ")")
+     <*> optional (try annot)
+     <*> (symbol "=" *> expr)
 
 -- Left factoring lvalue grammar:
 --
@@ -150,36 +142,56 @@ record = RecordExp'
  where
   recfield = (,,) <$> getPosition <*> ident <*> (symbol "=" *> expr)
 
-{-data Exp = VarExp Var-}
-{-         | NilExp-}
-{-         | IntExp Int-}
-{-         | StringExp String Pos-}
-{-         | CallExp CallExp'-}
-{-         | OpExp Exp Op Exp Pos-}
-{-         | RecordExp RecordExp'-}
-{-         | SeqExp [(Exp, Pos)]-}
-{-         | AssignExp Var Exp Pos-}
-{-         | IfExp IfExp'-}
+array :: Parser ArrayExp'
+array = ArrayExp'
+    <$> getPosition
+    <*> ident
+    <*> (symbol "[" *> expr <* symbol "]")
+    <*> (rword "of" *> expr)
+
+assign :: Parser Exp
+assign = AssignExp <$> getPosition <*> var <*> (symbol ":=" *> expr)
+
+ifExp :: Parser IfExp'
+ifExp = IfExp'
+    <$> getPosition
+    <*> (rword "if" *> expr)
+    <*> (rword "then" *> expr)
+    <*> optional (rword "else" *> expr)
+
+{-data Exp = VarExp Var-}             -- check
+{-         | NilExp-}                 -- check
+{-         | IntExp Int-}             -- check
+{-         | StringExp String Pos-}   -- check
+{-         | CallExp CallExp'-}       -- check
+{-         | OpExp Exp Op Exp Pos-}   -- check
+{-         | RecordExp RecordExp'-}   -- check
+{-         | SeqExp [(Exp, Pos)]-}    -- check
+{-         | AssignExp Var Exp Pos-}  -- check
+{-         | IfExp IfExp'-}           -- check
 {-         | WhileExp WhileExp'-}
 {-         | ForExp ForExp'-}
-{-         | BreakExp Pos-}
+{-         | BreakExp Pos-}           -- check
 {-         | LetExp LetExp'-}
-{-         | ArrayExp ArrayExp'-}
-{-         | LValueExp LValue-}
+{-         | ArrayExp ArrayExp'-}     -- check
 
 expr :: Parser Exp
 expr = (NilExp <$ rword "nil")
+   <|> (BreakExp <$> getPosition <* rword "break")
    <|> (IntExp <$> integer)
    <|> (StringExp <$> getPosition <*> string'')
+   <|> (IfExp <$> ifExp)
+   <|> (ArrayExp <$> try array)
    <|> (RecordExp <$> try record)
    <|> (CallExp <$> try call)
    <|> try (symbol "(" *> expr <* symbol ")")
+   <|> try assign
    <|> try opExp
    <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
    <|> (VarExp <$> var)
 
-annot :: Parser (Symbol, Pos)
-annot = getPosition >>= \pos -> (,) <$> (symbol ":" *> ident) <*> pure pos
+annot :: Parser (Pos, Symbol)
+annot = (,) <$> getPosition <*> (symbol ":" *> ident)
 
 ident :: Parser Symbol
 ident = Symbol <$> identifier
