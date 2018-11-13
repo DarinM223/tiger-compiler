@@ -56,24 +56,24 @@ data IfExp' = IfExp'
   } deriving (Show)
 
 data WhileExp' = WhileExp'
-  { _test :: Exp
+  { _pos  :: Pos
+  , _test :: Exp
   , _body :: Exp
-  , _pos  :: Pos
   } deriving (Show)
 
 data ForExp' = ForExp'
-  { _var    :: Symbol
+  { _pos    :: Pos
+  , _var    :: Symbol
   , _escape :: Escape
   , _lo     :: Exp
   , _hi     :: Exp
   , _body   :: Exp
-  , _pos    :: Pos
   } deriving (Show)
 
 data LetExp' = LetExp'
-  { _decs :: [Dec]
+  { _pos  :: Pos
+  , _decs :: [Dec]
   , _body :: Exp
-  , _pos  :: Pos
   } deriving (Show)
 
 data ArrayExp' = ArrayExp'
@@ -83,9 +83,9 @@ data ArrayExp' = ArrayExp'
   , _init :: Exp
   } deriving (Show)
 
-data Dec = FunctionDec [FunDec]
+data Dec = FunctionDec FunDec
          | VarDec VarDec'
-         | TypeDec [TypeDec']
+         | TypeDec TypeDec'
          deriving (Show)
 
 data Field = Field
