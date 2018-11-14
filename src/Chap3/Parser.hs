@@ -116,7 +116,8 @@ opExp :: Parser Exp
 opExp = makeExprParser term operators
  where
   term = sc *> term' <* sc
-  term' = (IntExp <$> integer)
+  term' = (NilExp <$ rword "nil")
+      <|> (IntExp <$> integer)
       <|> (StringExp <$> getPosition <*> string'')
       <|> (CallExp <$> try call)
       <|> (VarExp <$> var)
@@ -127,6 +128,8 @@ opExp = makeExprParser term operators
   binOp ifix op parser = ifix $
     (\pos exp1 exp2 -> OpExp exp1 op exp2 pos) <$> (getPosition <* parser)
 
+  dupPrefixOp sym diff = (lexeme . try) (string sym *> notFollowedBy diff)
+
   operators = [ [unOp MinusOp (symbol "-")]
               , [binOp InfixL TimesOp (symbol "*")]
               , [binOp InfixL DivideOp (symbol "/")]
@@ -134,8 +137,8 @@ opExp = makeExprParser term operators
               , [binOp InfixL MinusOp (symbol "-")]
               , [binOp InfixN EqOp (symbol "=")]
               , [binOp InfixN NeqOp (symbol "<>")]
-              , [binOp InfixN GtOp (symbol ">")]
-              , [binOp InfixN LtOp (symbol "<")]
+              , [binOp InfixN GtOp (dupPrefixOp ">" (char '='))]
+              , [binOp InfixN LtOp (dupPrefixOp "<" (char '='))]
               , [binOp InfixN GeOp (symbol ">=")]
               , [binOp InfixN LeOp (symbol "<=")]
               -- TODO(DarinM223): figure out what infix & and | are
@@ -188,7 +191,7 @@ letExp :: Parser LetExp'
 letExp = LetExp'
      <$> getPosition
      <*> (rword "let" *> sepBy1 dec sc)
-     <*> (rword "in" *> expr <* rword "end")
+     <*> (SeqExp <$> (rword "in" *> seq' <* rword "end"))
 
 expr :: Parser Exp
 expr = (NilExp <$ rword "nil")
@@ -199,10 +202,10 @@ expr = (NilExp <$ rword "nil")
    <|> (LetExp <$> letExp)
    <|> (ArrayExp <$> try array)
    <|> (RecordExp <$> try record)
-   <|> (CallExp <$> try call)
    <|> try (symbol "(" *> expr <* symbol ")")
    <|> try assign
    <|> try opExp
+   <|> (CallExp <$> try call)
    <|> (IntExp <$> integer)
    <|> (StringExp <$> getPosition <*> string'')
    <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
@@ -262,3 +265,60 @@ testSample1 = runParserT
   parseExpr
   ""
   sample1
+
+sample2 :: String
+sample2 = T.unpack
+  [text|
+    let   type any = {any: int}
+          var buffer := getchar()
+
+      function readint(any: any) : int =
+       let var i := 0
+           function isdigit(s : string) : int =
+              ord(buffer)>=ord("0") & ord(buffer)<=ord("9")
+        in while buffer=" " | buffer="\n" do buffer := getchar();
+           any.any := isdigit(buffer);
+           while isdigit(buffer)
+            do (i := i*10+ord(buffer)-ord("0");
+                buffer := getchar());
+           i
+      end
+
+      type list = {first: int, rest: list}
+
+      function readlist() : list =
+          let var any := any{any=0}
+              var i := readint(any)
+           in if any.any
+               then list{first=i,rest=readlist()}
+               else (buffer := getchar(); nil)
+          end
+
+      function merge(a: list, b: list) : list =
+        if a=nil then b
+        else if b=nil then a
+        else if a.first < b.first
+            then list{first=a.first,rest=merge(a.rest,b)}
+            else list{first=b.first,rest=merge(a,b.rest)}
+
+      function printint(i: int) =
+       let function f(i:int) = if i>0
+               then (f(i/10); print(chr(i-i/10*10+ord("0"))))
+        in if i<0 then (print("-"); f(-i))
+           else if i>0 then f(i)
+           else print("0")
+       end
+
+      function printlist(l: list) =
+        if l=nil then print("\n")
+        else (printint(l.first); print(" "); printlist(l.rest))
+
+      in printlist(merge(readlist(), readlist()))
+    end
+  |]
+
+testSample2 :: IO (Either (ParseError (Token String) Void) Exp)
+testSample2 = runParserT
+  parseExpr
+  ""
+  sample2
