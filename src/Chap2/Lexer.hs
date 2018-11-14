@@ -1,6 +1,8 @@
 module Chap2.Lexer where
 
 import Control.Monad (void)
+import Control.Monad.Reader
+import Chap5.Symbol
 import Data.Maybe (fromJust)
 import Data.Char (chr, ord)
 import Data.Void
@@ -9,7 +11,24 @@ import Text.Megaparsec.Char
 
 import qualified Text.Megaparsec.Char.Lexer as L
 
-type Parser = ParsecT Void String IO
+data Config = Config
+  { _symRef   :: SymbolRef
+  , _symTable :: SymbolTable
+  }
+instance HasSymbolRef Config where getSymRef = _symRef
+instance HasSymbolTable Config where getSymTable = _symTable
+
+mkConfig :: IO Config
+mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable
+
+type Parser = ParsecT Void String (ReaderT Config IO)
+
+runMyParserT :: Parser a
+             -> String
+             -> IO (Either (ParseError (Token String) Void) a)
+runMyParserT m s = do
+  config <- mkConfig
+  flip runReaderT config $ runParserT m "" s
 
 sc :: Parser ()
 sc = L.space (space1 <|> void tab) empty blockCmnt

@@ -4,6 +4,7 @@ module Chap3.Parser where
 
 import Chap2.Lexer
 import Chap3.AST
+import Chap5.Symbol
 import Control.Monad.IO.Class
 import Control.Monad.Combinators.Expr
 import Data.Void
@@ -215,16 +216,15 @@ annot :: Parser (Pos, Symbol)
 annot = (,) <$> getPosition <*> (symbol ":" *> ident)
 
 ident :: Parser Symbol
-ident = Symbol <$> identifier
+ident = identifier >>= toSymbol
 
 parseExpr :: Parser Exp
 parseExpr = sc *> expr <* eof
 
 -- This should not return Left.
 testParseCall :: IO (Either (ParseError (Token String) Void) Exp)
-testParseCall = runParserT
+testParseCall = runMyParserT
   parseExpr
-  ""
   "foo(hello.bar, blah[boo], hello.world[bob])"
 
 sample1 :: String
@@ -261,9 +261,8 @@ sample1 = T.unpack
   |]
 
 testSample1 :: IO (Either (ParseError (Token String) Void) Exp)
-testSample1 = runParserT
+testSample1 = runMyParserT
   parseExpr
-  ""
   sample1
 
 sample2 :: String
@@ -318,7 +317,6 @@ sample2 = T.unpack
   |]
 
 testSample2 :: IO (Either (ParseError (Token String) Void) Exp)
-testSample2 = runParserT
+testSample2 = runMyParserT
   parseExpr
-  ""
   sample2

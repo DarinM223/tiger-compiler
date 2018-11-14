@@ -1,10 +1,7 @@
 module Chap3.AST where
 
+import Chap5.Symbol
 import Data.IORef
-import Text.Megaparsec (SourcePos)
-
-newtype Symbol = Symbol { unSymbol :: String } deriving (Show, Eq)
-type Pos = SourcePos
 
 newtype Escape = Escape { unEscape :: IORef Bool }
 instance Show Escape where
