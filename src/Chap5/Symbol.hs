@@ -43,3 +43,6 @@ toSymbol str = do
 
 fromSymbol :: Symbol -> String
 fromSymbol = fst . unSymbol
+
+symbolValue :: Symbol -> Int
+symbolValue = snd . unSymbol
