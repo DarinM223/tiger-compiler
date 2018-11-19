@@ -3,10 +3,14 @@ module Chap5.Semant
   , transExp
   , transDec
   , transTy
+  , testTy
   ) where
 
+import Control.Monad (void)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Chap2.Lexer (runMyParserT)
+import Chap3.Parser (parseExpr)
 import Chap5.Symbol (Pos, fromSymbol)
 import Chap5.Table
 import Data.IORef
@@ -24,32 +28,64 @@ transVar :: AST.Var -> TEnv -> VEnv -> m ExpTy
 transVar = undefined
 
 -- | Trace through TName types to their underlying definitions.
-actualTy :: Ty -> IO Ty
-actualTy ty@(TName _ (TRef ref)) = readIORef ref >>= \case
+actualTy :: (MonadIO m) => Ty -> m Ty
+actualTy ty@(TName _ (TRef ref)) = liftIO (readIORef ref) >>= \case
   Just ty -> actualTy ty
   Nothing -> return ty
 actualTy ty = return ty
 
-transExp :: (MonadIO m, MonadThrow m) => AST.Exp -> TEnv -> VEnv -> m ExpTy
-transExp (AST.VarExp var) _ venv = trVar var venv
-transExp (AST.LetExp (AST.LetExp' _ decs body)) tenv venv = do
-  (tenv', venv') <- foldlM
-    (\(!tenv, !venv) dec -> transDec dec tenv venv)
-    (tenv, venv) decs
-  transExp body tenv' venv'
-transExp (AST.OpExp left AST.PlusOp right pos) tenv venv = do
-  ExpTy _ tyleft <- transExp left tenv venv
-  ExpTy _ tyright <- transExp right tenv venv
-  case (tyleft, tyright) of
-    (TInt, TInt) -> return $ ExpTy EUnit TInt
-    _            -> throwM $ Err pos "integer required"
-transExp _ _ _ = undefined
+checkTy :: (MonadIO m, MonadThrow m) => Pos -> Ty -> Ty -> m ()
+checkTy pos ty ty' = do
+  cty <- actualTy ty
+  cty' <- actualTy ty'
+  if cty == cty'
+    then return ()
+    else throwM $ Err pos $ "type mismatch: expected: "
+                         ++ show ty ++ " got: " ++ show ty'
 
-trVar :: (MonadIO m, MonadThrow m) => AST.Var -> VEnv -> m ExpTy
-trVar (AST.SimpleVar id pos) venv = case look id venv of
-  Just (VarEntry ty) -> ExpTy EUnit <$> liftIO (actualTy ty)
-  _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
-trVar _ _ = undefined
+transExp :: (MonadIO m, MonadThrow m) => AST.Exp -> TEnv -> VEnv -> m ExpTy
+transExp exp tenv venv = case exp of
+  AST.NilExp        -> return $ ExpTy EUnit TNil
+  AST.StringExp _ _ -> return $ ExpTy EUnit TString
+  AST.IntExp _      -> return $ ExpTy EUnit TInt
+  AST.VarExp var    -> trVar var venv
+
+  -- TODO(DarinM223): match types for (Pos, Symbol, Exp) fields
+  -- if they typecheck, then return return type
+  AST.RecordExp (AST.RecordExp' _ _ _) -> undefined
+
+  AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym venv of
+    Just (FunEntry tys rt) -> do
+      tys' <- fmap (fmap (\(ExpTy _ ty) -> ty))
+            . traverse (\exp -> transExp exp tenv venv)
+            $ args
+      -- TODO(DarinM223): check with checkTy
+      if tys == tys'
+        then ExpTy EUnit <$> actualTy rt
+        -- TODO(DarinM223): make error easier to understand.
+        else throwM $ Err pos "parameters don't match"
+    _ -> throwM $ Err pos "function not found"
+
+  AST.LetExp (AST.LetExp' _ decs body) -> do
+    (tenv', venv') <- foldlM
+      (\(!tenv, !venv) dec -> transDec dec tenv venv)
+      (tenv, venv) decs
+    transExp body tenv' venv'
+
+  AST.OpExp left AST.PlusOp right pos -> do
+    ExpTy _ tyleft <- transExp left tenv venv
+    ExpTy _ tyright <- transExp right tenv venv
+    case (tyleft, tyright) of
+      (TInt, TInt) -> return $ ExpTy EUnit TInt
+      _            -> throwM $ Err pos "integer required"
+
+  AST.OpExp _ _ _ _ -> undefined
+  _ -> undefined
+ where
+  trVar (AST.SimpleVar id pos) venv = case look id venv of
+    Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
+    _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
+  trVar _ _ = undefined
 
 transDec :: (MonadIO m, MonadThrow m)
          => AST.Dec -> TEnv -> VEnv -> m (TEnv, VEnv)
@@ -77,10 +113,6 @@ transDec dec tenv venv = case dec of
   lookTy pos tySym = case look tySym tenv of
     Just ty -> return ty
     _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
-  checkTy pos ty ty'
-    | ty == ty' = return ()
-    | otherwise = throwM $ Err pos $ "type mismatch: expected: "
-               ++ show ty ++ " got: " ++ show ty'
   trFunDec pos name params body ty = do
     params' <- traverse lookTyField params
     let venv'  = enter name (FunEntry (fmap snd params') ty) venv
@@ -92,3 +124,8 @@ transDec dec tenv venv = case dec of
 
 transTy :: AST.Ty -> TEnv -> Ty
 transTy = undefined
+
+testTy :: String -> IO ()
+testTy text = runMyParserT parseExpr text >>= \case
+  Left err  -> print err
+  Right exp -> void $ transExp exp empty empty

@@ -20,6 +20,9 @@ newtype Unique = Unique (IORef ()) deriving (Eq)
 instance Show Unique where
   show _ = ""
 
+mkUnique :: IO Unique
+mkUnique = Unique <$> newIORef ()
+
 newtype TRef = TRef (IORef (Maybe Ty)) deriving (Eq)
 instance Show TRef where
   show _ = ""
