@@ -25,7 +25,7 @@ transVar = undefined
 
 -- | Trace through TName types to their underlying definitions.
 actualTy :: Ty -> IO Ty
-actualTy ty@(TName _ ref) = readIORef ref >>= \case
+actualTy ty@(TName _ (TRef ref)) = readIORef ref >>= \case
   Just ty -> actualTy ty
   Nothing -> return ty
 actualTy ty = return ty
@@ -53,31 +53,42 @@ trVar _ _ = undefined
 
 transDec :: (MonadIO m, MonadThrow m)
          => AST.Dec -> TEnv -> VEnv -> m (TEnv, VEnv)
-transDec (AST.VarDec (AST.VarDec' { _name = name
-                                  , _type = Nothing
-                                  , _init = init })) tenv venv = do
-  ExpTy _ ty <- transExp init tenv venv
-  return (tenv, enter name (VarEntry ty) venv)
-transDec (AST.TypeDec (AST.TypeDec' { _name = name, _ty = ty })) tenv venv =
-  return (enter name (transTy ty tenv) tenv, venv)
-transDec (AST.FunctionDec (AST.FunDec { _name   = name
-                                      , _params = params
-                                      , _result = Just (pos, rt)
-                                      , _body   = body })) tenv venv =
-  case look rt tenv of
-    Just resultTy -> do
-      params' <- traverse lookTy params
-      let venv'  = enter name (FunEntry (fmap snd params') resultTy) venv
-          venv'' = foldl' enterParam venv' params'
-      transExp body tenv venv''
-      return (tenv, venv')
-    Nothing -> throwM $ Err pos $ "undefined return type"
+transDec dec tenv venv = case dec of
+  AST.VarDec (AST.VarDec' _ name Nothing init _) -> do
+    ExpTy _ ty <- transExp init tenv venv
+    return (tenv, enter name (VarEntry ty) venv)
+
+  AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init _) -> do
+    ty <- lookTy pos' tySym
+    ExpTy _ ty' <- transExp init tenv venv
+    checkTy pos ty ty'
+    return (tenv, enter name (VarEntry ty) venv)
+
+  AST.TypeDec (AST.TypeDec' _ name ty) ->
+    return (enter name (transTy ty tenv) tenv, venv)
+
+  AST.FunctionDec (AST.FunDec pos name params Nothing body) ->
+    trFunDec pos name params body TUnit
+
+  AST.FunctionDec (AST.FunDec pos name params (Just (pos', rt)) body) ->
+    lookTy pos' rt >>= trFunDec pos name params body
  where
-  lookTy (AST.Field pos name tySym _) = case look tySym tenv of
-    Just ty -> return (name, ty)
-    _       -> throwM $ Err pos $ "undefined parameter type"
+  lookTyField (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym
+  lookTy pos tySym = case look tySym tenv of
+    Just ty -> return ty
+    _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
+  checkTy pos ty ty'
+    | ty == ty' = return ()
+    | otherwise = throwM $ Err pos $ "type mismatch: expected: "
+               ++ show ty ++ " got: " ++ show ty'
+  trFunDec pos name params body ty = do
+    params' <- traverse lookTyField params
+    let venv'  = enter name (FunEntry (fmap snd params') ty) venv
+        venv'' = foldl' enterParam venv' params'
+    ExpTy _ ty' <- transExp body tenv venv''
+    checkTy pos ty ty'
+    return (tenv, venv')
   enterParam venv (name, ty) = enter name (VarEntry ty) venv
-transDec _ _ _ = undefined
 
 transTy :: AST.Ty -> TEnv -> Ty
 transTy = undefined

@@ -20,13 +20,18 @@ newtype Unique = Unique (IORef ()) deriving (Eq)
 instance Show Unique where
   show _ = ""
 
+newtype TRef = TRef (IORef (Maybe Ty)) deriving (Eq)
+instance Show TRef where
+  show _ = ""
+
 data Ty = TInt
         | TString
         | TRecord [(Symbol, Ty)] Unique
         | TArray Ty Unique
         | TNil
         | TUnit
-        | TName Symbol (IORef (Maybe Ty))
+        | TName Symbol TRef
+        deriving (Show, Eq)
 
 data EnvEntry = VarEntry Ty | FunEntry [Ty] Ty
 
