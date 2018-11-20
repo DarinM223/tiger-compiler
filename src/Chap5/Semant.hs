@@ -4,22 +4,23 @@ module Chap5.Semant
   , transDec
   , transTy
   , testTy
+  , test1
   ) where
 
-import Control.Monad (void)
+import Control.Applicative (liftA2)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Chap2.Lexer (runMyParserT)
 import Chap3.Parser (parseExpr)
-import Chap5.Symbol (Pos, fromSymbol)
+import Chap5.Symbol (Pos, Symbol, fromSymbol)
 import Chap5.Table
 import Data.IORef
 import Data.Foldable (foldlM, foldl')
 import qualified Chap3.AST as AST
 
-data Exp = EUnit
+data Exp = EUnit deriving (Show)
 
-data ExpTy = ExpTy Exp Ty
+data ExpTy = ExpTy Exp Ty deriving (Show)
 
 data Err = Err Pos String deriving (Show)
 instance Exception Err
@@ -43,6 +44,11 @@ checkTy pos ty ty' = do
     else throwM $ Err pos $ "type mismatch: expected: "
                          ++ show ty ++ " got: " ++ show ty'
 
+lookTy :: (MonadThrow m) => Pos -> Symbol -> TEnv -> m Ty
+lookTy pos tySym tenv = case look tySym tenv of
+  Just ty -> return ty
+  _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
+
 transExp :: (MonadIO m, MonadThrow m) => AST.Exp -> TEnv -> VEnv -> m ExpTy
 transExp exp tenv venv = case exp of
   AST.NilExp        -> return $ ExpTy EUnit TNil
@@ -53,6 +59,11 @@ transExp exp tenv venv = case exp of
   -- TODO(DarinM223): match types for (Pos, Symbol, Exp) fields
   -- if they typecheck, then return return type
   AST.RecordExp (AST.RecordExp' _ _ _) -> undefined
+
+  AST.SeqExp exps -> foldlM
+    (\_ (_, exp) -> transExp exp tenv venv)
+    (ExpTy EUnit TNil)
+    exps
 
   AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym venv of
     Just (FunEntry tys rt) -> do
@@ -80,7 +91,7 @@ transExp exp tenv venv = case exp of
       _            -> throwM $ Err pos "integer required"
 
   AST.OpExp _ _ _ _ -> undefined
-  _ -> undefined
+  exp -> error $ show exp
  where
   trVar (AST.SimpleVar id pos) venv = case look id venv of
     Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
@@ -95,24 +106,21 @@ transDec dec tenv venv = case dec of
     return (tenv, enter name (VarEntry ty) venv)
 
   AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init _) -> do
-    ty <- lookTy pos' tySym
+    ty <- lookTy pos' tySym tenv
     ExpTy _ ty' <- transExp init tenv venv
     checkTy pos ty ty'
     return (tenv, enter name (VarEntry ty) venv)
 
-  AST.TypeDec (AST.TypeDec' _ name ty) ->
-    return (enter name (transTy ty tenv) tenv, venv)
+  AST.TypeDec (AST.TypeDec' _ name ty) -> do
+    (, venv) <$> (liftA2 (enter name) (transTy ty tenv) (pure tenv))
 
   AST.FunctionDec (AST.FunDec pos name params Nothing body) ->
     trFunDec pos name params body TUnit
 
   AST.FunctionDec (AST.FunDec pos name params (Just (pos', rt)) body) ->
-    lookTy pos' rt >>= trFunDec pos name params body
+    lookTy pos' rt tenv >>= trFunDec pos name params body
  where
-  lookTyField (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym
-  lookTy pos tySym = case look tySym tenv of
-    Just ty -> return ty
-    _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
+  lookTyField (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
   trFunDec pos name params body ty = do
     params' <- traverse lookTyField params
     let venv'  = enter name (FunEntry (fmap snd params') ty) venv
@@ -122,10 +130,21 @@ transDec dec tenv venv = case dec of
     return (tenv, venv')
   enterParam venv (name, ty) = enter name (VarEntry ty) venv
 
-transTy :: AST.Ty -> TEnv -> Ty
-transTy = undefined
+transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
+transTy (AST.NameTy sym pos) tenv = lookTy pos sym tenv
+transTy (AST.RecordTy fields) tenv =
+  TRecord <$> trFields fields tenv <*> liftIO mkUnique
+ where
+  -- TODO(DarinM223): check for duplicate fields in record
+  trFields fields tenv = traverse (trField tenv) fields
+  trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
+transTy (AST.ArrayTy sym pos) tenv =
+  TArray <$> lookTy pos sym tenv <*> liftIO mkUnique
 
-testTy :: String -> IO ()
-testTy text = runMyParserT parseExpr text >>= \case
-  Left err  -> print err
-  Right exp -> void $ transExp exp empty empty
+testTy :: String -> IO ExpTy
+testTy text = runMyParserT ((,) <$> mkEnvs <*> parseExpr) text >>= \case
+  Left err                  -> throwM err
+  Right ((tenv, venv), exp) -> transExp exp tenv venv
+
+test1 :: IO ExpTy
+test1 = testTy "let type a = int\n var a : a := 2 in a end"

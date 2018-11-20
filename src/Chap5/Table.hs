@@ -1,6 +1,7 @@
 module Chap5.Table where
 
 import Chap5.Symbol
+import Control.Monad.Reader
 import Data.IORef
 
 import qualified Data.IntMap as IM
@@ -40,3 +41,13 @@ data EnvEntry = VarEntry Ty | FunEntry [Ty] Ty
 
 type TEnv = Table Ty
 type VEnv = Table EnvEntry
+
+mkEnvs :: (MonadIO m, MonadReader r m, HasSymbolRef r, HasSymbolTable r)
+       => m (TEnv, VEnv)
+mkEnvs = (,) <$> convertBase tenvBase <*> convertBase venvBase
+ where
+  tenvBase = [("int", TInt), ("string", TString)]
+  venvBase = [] -- TODO(DarinM223): add default functions in here.
+
+  convertBase = fmap (IM.fromList . fmap (\(sym, ty) -> (symbolValue sym, ty)))
+              . mapM (\(s, ty) -> (, ty) <$> toSymbol s)
