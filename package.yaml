@@ -97,3 +97,5 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - tiger-haskell
+    - tasty
+    - tasty-hunit

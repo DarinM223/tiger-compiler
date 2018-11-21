@@ -1,11 +1,4 @@
-module Chap5.Semant
-  ( transVar
-  , transExp
-  , transDec
-  , transTy
-  , testTy
-  , test1
-  ) where
+module Chap5.Semant where
 
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class
@@ -18,9 +11,9 @@ import Data.IORef
 import Data.Foldable (foldlM, foldl')
 import qualified Chap3.AST as AST
 
-data Exp = EUnit deriving (Show)
+data Exp = EUnit deriving (Show, Eq)
 
-data ExpTy = ExpTy Exp Ty deriving (Show)
+data ExpTy = ExpTy Exp Ty deriving (Show, Eq)
 
 data Err = Err Pos String deriving (Show)
 instance Exception Err
@@ -111,7 +104,7 @@ transDec dec tenv venv = case dec of
     checkTy pos ty ty'
     return (tenv, enter name (VarEntry ty) venv)
 
-  AST.TypeDec (AST.TypeDec' _ name ty) -> do
+  AST.TypeDec (AST.TypeDec' _ name ty) ->
     (, venv) <$> (liftA2 (enter name) (transTy ty tenv) (pure tenv))
 
   AST.FunctionDec (AST.FunDec pos name params Nothing body) ->
@@ -145,6 +138,3 @@ testTy :: String -> IO ExpTy
 testTy text = runMyParserT ((,) <$> mkEnvs <*> parseExpr) text >>= \case
   Left err                  -> throwM err
   Right ((tenv, venv), exp) -> transExp exp tenv venv
-
-test1 :: IO ExpTy
-test1 = testTy "let type a = int\n var a : a := 2 in a end"
