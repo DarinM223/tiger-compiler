@@ -17,7 +17,12 @@ enter = IM.insert . symbolValue
 look :: Symbol -> Table a -> Maybe a
 look = IM.lookup . symbolValue
 
-newtype Unique = Unique (IORef ()) deriving (Eq)
+data Unique = Unique (IORef ())
+            | UniqueIgnore
+instance Eq Unique where
+  UniqueIgnore == _          = True
+  _ == UniqueIgnore          = True
+  Unique ref1 == Unique ref2 = ref1 == ref2
 instance Show Unique where
   show _ = ""
 

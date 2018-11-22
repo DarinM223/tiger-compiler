@@ -5,11 +5,13 @@ import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Chap2.Lexer (runMyParserT)
 import Chap3.Parser (parseExpr)
-import Chap5.Symbol (Pos, Symbol, fromSymbol)
+import Chap5.Symbol (Pos, Symbol, fromSymbol, getSymbols, symbolValue)
 import Chap5.Table
 import Data.IORef
 import Data.Foldable (foldlM, foldl')
 import qualified Chap3.AST as AST
+import qualified Data.IntMap as IM
+import qualified Data.HashMap.Strict as HM
 
 data Exp = EUnit deriving (Show, Eq)
 
@@ -49,9 +51,14 @@ transExp exp tenv venv = case exp of
   AST.IntExp _      -> return $ ExpTy EUnit TInt
   AST.VarExp var    -> trVar var venv
 
-  -- TODO(DarinM223): match types for (Pos, Symbol, Exp) fields
-  -- if they typecheck, then return return type
-  AST.RecordExp (AST.RecordExp' _ _ _) -> undefined
+  AST.RecordExp (AST.RecordExp' pos tySym fields) -> do
+    ty <- lookTy pos tySym tenv >>= actualTy
+    case ty of
+      TRecord fieldTys _ -> do
+        fieldTys' <- traverse (trField venv) fields
+        matchTys pos fieldTys fieldTys'
+        return $ ExpTy EUnit ty
+      _ -> throwM $ Err pos $ "type " ++ show tySym ++ " is not a record"
 
   AST.SeqExp exps -> foldlM
     (\_ (_, exp) -> transExp exp tenv venv)
@@ -86,10 +93,30 @@ transExp exp tenv venv = case exp of
   AST.OpExp _ _ _ _ -> undefined
   exp -> error $ show exp
  where
+  trField venv (pos, symbol, exp) = (\(ExpTy _ ty) -> (pos, symbol, ty))
+                                <$> transExp exp tenv venv
   trVar (AST.SimpleVar id pos) venv = case look id venv of
     Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
     _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
   trVar _ _ = undefined
+
+matchTys :: (MonadIO m, MonadThrow m)
+         => Pos
+         -> [(Symbol, Ty)]
+         -> [(Pos, Symbol, Ty)]
+         -> m ()
+matchTys pos l1 l2
+  | length l1 /= length l2 = throwM $ Err pos "Different parameter sizes"
+  | otherwise              = checkMap (buildMap l1) l2
+ where
+  checkMap map l = mapM_ (check map) l
+  check map (pos, sym, ty) = case IM.lookup (symbolValue sym) map of
+    Just ty' -> checkTy pos ty ty'
+    Nothing  -> throwM $
+      Err pos $ "Symbol " ++ show sym ++ " not found in record"
+
+  buildMap l = foldl' append IM.empty l
+  append map (sym, ty) = IM.insert (symbolValue sym) ty map
 
 transDec :: (MonadIO m, MonadThrow m)
          => AST.Dec -> TEnv -> VEnv -> m (TEnv, VEnv)
@@ -138,3 +165,10 @@ testTy :: String -> IO ExpTy
 testTy text = runMyParserT ((,) <$> mkEnvs <*> parseExpr) text >>= \case
   Left err                  -> throwM err
   Right ((tenv, venv), exp) -> transExp exp tenv venv
+
+testTySyms :: String -> IO (HM.HashMap String Int, ExpTy)
+testTySyms text = runMyParserT m text >>= \case
+  Left err -> throwM err
+  Right ((tenv, venv), exp, symbols) -> (symbols ,) <$> transExp exp tenv venv
+ where
+  m = (,,) <$> mkEnvs <*> parseExpr <*> getSymbols

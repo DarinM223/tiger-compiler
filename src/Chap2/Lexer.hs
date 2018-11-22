@@ -22,10 +22,11 @@ mkConfig :: IO Config
 mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable
 
 type Parser = ParsecT Void String (ReaderT Config IO)
+type ParseErr = ParseErrorBundle String Void
 
 runMyParserT :: Parser a
              -> String
-             -> IO (Either (ParseError (Token String) Void) a)
+             -> IO (Either ParseErr a)
 runMyParserT m s = do
   config <- mkConfig
   flip runReaderT config $ runParserT m "" s

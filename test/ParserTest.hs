@@ -6,11 +6,9 @@ import Chap2.Lexer
 import Chap3.AST
 import Chap3.Parser
 import Data.Either
-import Data.Void
 import NeatInterpolation
 import Test.Tasty
 import Test.Tasty.HUnit
-import Text.Megaparsec hiding (Pos)
 import qualified Data.Text as T
 
 tests :: TestTree
@@ -20,19 +18,19 @@ tests = testGroup "Parser tests"
   , testCase "Tests on sample program 2" (testExp testSample2 False)
   ]
 
-testExp :: IO (Either (ParseError (Token String) Void) Exp) -> Bool -> IO ()
+testExp :: IO (Either ParseErr Exp) -> Bool -> IO ()
 testExp m False = m >>= \exp -> isRight exp @? "Error parsing: " ++ show exp
 testExp m True  = do
   exp <- m
   isRight exp @? "Error parsing: " ++ show exp
   print exp
 
-testParseCall :: IO (Either (ParseError (Token String) Void) Exp)
+testParseCall :: IO (Either ParseErr Exp)
 testParseCall = runMyParserT
   parseExpr
   "foo(hello.bar, blah[boo], hello.world[bob])"
 
-testSample1 :: IO (Either (ParseError (Token String) Void) Exp)
+testSample1 :: IO (Either ParseErr Exp)
 testSample1 = runMyParserT parseExpr sample1
  where
   sample1 = T.unpack
@@ -67,7 +65,7 @@ testSample1 = runMyParserT parseExpr sample1
       end
     |]
 
-testSample2 :: IO (Either (ParseError (Token String) Void) Exp)
+testSample2 :: IO (Either ParseErr Exp)
 testSample2 = runMyParserT parseExpr sample2
  where
   sample2 = T.unpack

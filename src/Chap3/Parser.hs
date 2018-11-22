@@ -13,26 +13,26 @@ sepCh c = sc *> char c *> sc
 
 typedec :: Parser TypeDec'
 typedec = TypeDec'
-      <$> getPosition
+      <$> getSourcePos
       <*> (rword "type" *> ident)
       <*> (symbol "=" *> ty)
 
 ty :: Parser Ty
-ty = getPosition >>= \pos
+ty = getSourcePos >>= \pos
   -> (ArrayTy <$> (rword "array" *> rword "of" *> ident) <*> pure pos)
  <|> (RecordTy <$> (symbol "{" *> sepBy1 tyfield (sepCh ',') <* symbol "}"))
  <|> (NameTy <$> ident <*> pure pos)
 
 tyfield :: Parser Field
 tyfield = Field
-      <$> getPosition
+      <$> getSourcePos
       <*> ident
       <*> (symbol ":" *> ident)
       <*> liftIO mkEscape
 
 vardec :: Parser VarDec'
 vardec = VarDec'
-     <$> getPosition
+     <$> getSourcePos
      <*> (rword "var" *> ident)
      <*> optional (try annot)
      <*> (symbol ":=" *> expr)
@@ -40,7 +40,7 @@ vardec = VarDec'
 
 fundec :: Parser FunDec
 fundec = FunDec
-     <$> getPosition
+     <$> getSourcePos
      <*> (rword "function" *> ident)
      <*> (symbol "(" *> sepBy tyfield (sepCh ',') <* symbol ")")
      <*> optional (try annot)
@@ -84,9 +84,9 @@ toVar (LFVarId sym pos rest) = toVar' (SimpleVar sym pos) rest
 
 -- | Parses the left factored grammar for lvalues.
 lfvar :: Parser LFVar
-lfvar = getPosition >>= \pos -> LFVarId <$> ident <*> pure pos <*> lfvar'
+lfvar = getSourcePos >>= \pos -> LFVarId <$> ident <*> pure pos <*> lfvar'
  where
-  lfvar' = getPosition >>= \pos
+  lfvar' = getSourcePos >>= \pos
         -> (LFVarId' <$> (symbol "." *> ident) <*> pure pos <*> lfvar')
        <|> (LFVarExpr <$> (symbol "[" *> expr <* symbol "]")
                       <*> pure pos
@@ -98,14 +98,14 @@ var = toVar <$> lfvar
 
 call :: Parser CallExp'
 call = CallExp'
-   <$> getPosition
+   <$> getSourcePos
    <*> ident
    <*> (symbol "(" *> sepBy expr (sepCh ',') <* symbol ")")
 
 seq' :: Parser [(Pos, Exp)]
 seq' = sepBy parseExp (sepCh ';')
  where
-  parseExp = (,) <$> getPosition <*> expr
+  parseExp = (,) <$> getSourcePos <*> expr
 
 opExp :: Parser Exp
 opExp = makeExprParser term operators
@@ -113,15 +113,15 @@ opExp = makeExprParser term operators
   term = sc *> term' <* sc
   term' = (NilExp <$ rword "nil")
       <|> (IntExp <$> integer)
-      <|> (StringExp <$> getPosition <*> string'')
+      <|> (StringExp <$> getSourcePos <*> string'')
       <|> (CallExp <$> try call)
       <|> (VarExp <$> var)
       <|> (symbol "(" *> expr <* symbol ")")
 
   unOp op parser = Prefix $
-    (\pos exp -> OpExp (IntExp 0) op exp pos) <$> (getPosition <* parser)
+    (\pos exp -> OpExp (IntExp 0) op exp pos) <$> (getSourcePos <* parser)
   binOp ifix op parser = ifix $
-    (\pos exp1 exp2 -> OpExp exp1 op exp2 pos) <$> (getPosition <* parser)
+    (\pos exp1 exp2 -> OpExp exp1 op exp2 pos) <$> (getSourcePos <* parser)
 
   dupPrefixOp sym diff = (lexeme . try) (string sym *> notFollowedBy diff)
 
@@ -144,38 +144,38 @@ opExp = makeExprParser term operators
 
 record :: Parser RecordExp'
 record = RecordExp'
-  <$> getPosition
+  <$> getSourcePos
   <*> ident
   <*> (symbol "{" *> sepBy recfield (sepCh ',') <* symbol "}")
  where
-  recfield = (,,) <$> getPosition <*> ident <*> (symbol "=" *> expr)
+  recfield = (,,) <$> getSourcePos <*> ident <*> (symbol "=" *> expr)
 
 array :: Parser ArrayExp'
 array = ArrayExp'
-    <$> getPosition
+    <$> getSourcePos
     <*> ident
     <*> (symbol "[" *> expr <* symbol "]")
     <*> (rword "of" *> expr)
 
 assign :: Parser Exp
-assign = AssignExp <$> getPosition <*> var <*> (symbol ":=" *> expr)
+assign = AssignExp <$> getSourcePos <*> var <*> (symbol ":=" *> expr)
 
 ifExp :: Parser IfExp'
 ifExp = IfExp'
-    <$> getPosition
+    <$> getSourcePos
     <*> (rword "if" *> expr)
     <*> (rword "then" *> expr)
     <*> optional (rword "else" *> expr)
 
 while :: Parser WhileExp'
 while = WhileExp'
-    <$> getPosition
+    <$> getSourcePos
     <*> (rword "while" *> expr)
     <*> (rword "do" *> expr)
 
 for :: Parser ForExp'
 for = ForExp'
-  <$> getPosition
+  <$> getSourcePos
   <*> (rword "for" *> ident)
   <*> liftIO mkEscape
   <*> (symbol ":=" *> expr)
@@ -184,13 +184,13 @@ for = ForExp'
 
 letExp :: Parser LetExp'
 letExp = LetExp'
-     <$> getPosition
+     <$> getSourcePos
      <*> (rword "let" *> sepBy1 dec sc)
      <*> (SeqExp <$> (rword "in" *> seq' <* rword "end"))
 
 expr :: Parser Exp
 expr = (NilExp <$ rword "nil")
-   <|> (BreakExp <$> getPosition <* rword "break")
+   <|> (BreakExp <$> getSourcePos <* rword "break")
    <|> (IfExp <$> ifExp)
    <|> (WhileExp <$> while)
    <|> (ForExp <$> for)
@@ -202,12 +202,12 @@ expr = (NilExp <$ rword "nil")
    <|> try opExp
    <|> (CallExp <$> try call)
    <|> (IntExp <$> integer)
-   <|> (StringExp <$> getPosition <*> string'')
+   <|> (StringExp <$> getSourcePos <*> string'')
    <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
    <|> (VarExp <$> var)
 
 annot :: Parser (Pos, Symbol)
-annot = (,) <$> getPosition <*> (symbol ":" *> ident)
+annot = (,) <$> getSourcePos <*> (symbol ":" *> ident)
 
 ident :: Parser Symbol
 ident = identifier >>= toSymbol

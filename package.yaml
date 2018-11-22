@@ -30,6 +30,7 @@ dependencies:
 - neat-interpolation
 - parser-combinators
 - text
+- unordered-containers
 
 default-extensions:
 - BangPatterns
