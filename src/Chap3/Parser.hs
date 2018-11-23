@@ -20,7 +20,7 @@ typedec = TypeDec'
 ty :: Parser Ty
 ty = getSourcePos >>= \pos
   -> (ArrayTy <$> (rword "array" *> rword "of" *> ident) <*> pure pos)
- <|> (RecordTy <$> (symbol "{" *> sepBy1 tyfield (sepCh ',') <* symbol "}"))
+ <|> (RecordTy <$> (symbol "{" *> sepBy tyfield (sepCh ',') <* symbol "}"))
  <|> (NameTy <$> ident <*> pure pos)
 
 tyfield :: Parser Field

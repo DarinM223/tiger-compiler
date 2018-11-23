@@ -168,7 +168,7 @@ testTy text = runMyParserT ((,) <$> mkEnvs <*> parseExpr) text >>= \case
 
 testTySyms :: String -> IO (HM.HashMap String Int, ExpTy)
 testTySyms text = runMyParserT m text >>= \case
-  Left err -> throwM err
+  Left err                           -> throwM err
   Right ((tenv, venv), exp, symbols) -> (symbols ,) <$> transExp exp tenv venv
  where
   m = (,,) <$> mkEnvs <*> parseExpr <*> getSymbols

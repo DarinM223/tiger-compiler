@@ -16,6 +16,7 @@ tests = testGroup "Parser tests"
   [ testCase "Tests parsing call" (testExp testParseCall False)
   , testCase "Tests on sample program 1" (testExp testSample1 False)
   , testCase "Tests on sample program 2" (testExp testSample2 False)
+  , testCase "Tests empty record dec" (testExp testParseEmptyRecord False)
   ]
 
 testExp :: IO (Either ParseErr Exp) -> Bool -> IO ()
@@ -29,6 +30,9 @@ testParseCall :: IO (Either ParseErr Exp)
 testParseCall = runMyParserT
   parseExpr
   "foo(hello.bar, blah[boo], hello.world[bob])"
+
+testParseEmptyRecord :: IO (Either ParseErr Exp)
+testParseEmptyRecord = runMyParserT parseExpr "let type rec = {} in end"
 
 testSample1 :: IO (Either ParseErr Exp)
 testSample1 = runMyParserT parseExpr sample1
