@@ -15,7 +15,8 @@ tests = testGroup "Type checking tests"
     testExpTy testLet (ExpTy EUnit TInt) False
   , testCase "Tests call expression" $
     testExpTy testCall (ExpTy EUnit TInt) False
-  , testCase "Tests records" $ testRecord
+  , testCase "Tests records" testRecord
+  , testCase "Test if else" testIfElse
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -72,4 +73,26 @@ testRecord = testTable tests expected
       TRecord [(look "c" t, TInt), (look "d" t, TString)] UniqueIgnore
     , const Nothing
     , const $ Just $ ExpTy EUnit $ TRecord [] UniqueIgnore
+    ]
+
+testIfElse :: IO ()
+testIfElse = testTable tests expected
+ where
+  tests =
+    [ (False, "if 1 then flush()")
+    , (False, "if 1 then flush() else 3")
+    , (False, "if 1 then 3")
+    , (False, "if \"hello\" then flush()")
+    , (False, "let var s := \"h\" in if ord(s) then flush() end")
+    , (False, "let var s := \"hello\" in if 1 then size(s) else ord(s) end")
+    , (False, "let type mi = int\nvar i : mi := 2 in if i then i else 0 end")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
+    , const Nothing
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TInt
+    , const $ Just $ ExpTy EUnit TInt
     ]

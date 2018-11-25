@@ -52,7 +52,17 @@ mkEnvs :: (MonadIO m, MonadReader r m, HasSymbolRef r, HasSymbolTable r)
 mkEnvs = (,) <$> convertBase tenvBase <*> convertBase venvBase
  where
   tenvBase = [("int", TInt), ("string", TString)]
-  venvBase = [] -- TODO(DarinM223): add default functions in here.
+  venvBase =
+    [ ("print", FunEntry [TString] TUnit)
+    , ("flush", FunEntry [] TUnit)
+    , ("getchar", FunEntry [] TString)
+    , ("ord", FunEntry [TString] TInt)
+    , ("chr", FunEntry [TInt] TString)
+    , ("size", FunEntry [TString] TInt)
+    , ("substring", FunEntry [TString, TInt, TInt] TString)
+    , ("not", FunEntry [TInt] TInt)
+    , ("exit", FunEntry [TInt] TUnit)
+    ]
 
   convertBase = fmap (IM.fromList . fmap (\(sym, ty) -> (symbolValue sym, ty)))
               . mapM (\(s, ty) -> (, ty) <$> toSymbol s)

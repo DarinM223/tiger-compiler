@@ -1,5 +1,6 @@
 module Chap5.Semant where
 
+import Control.Monad (when)
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
@@ -8,6 +9,7 @@ import Chap3.Parser (parseExpr)
 import Chap5.Symbol (Pos, Symbol, fromSymbol, getSymbols, symbolValue)
 import Chap5.Table
 import Data.IORef
+import Data.Maybe (fromMaybe)
 import Data.Foldable (foldlM, foldl')
 import qualified Chap3.AST as AST
 import qualified Data.IntMap as IM
@@ -34,10 +36,9 @@ checkTy :: (MonadIO m, MonadThrow m) => Pos -> Ty -> Ty -> m ()
 checkTy pos ty ty' = do
   cty <- actualTy ty
   cty' <- actualTy ty'
-  if cty == cty'
-    then return ()
-    else throwM $ Err pos $ "type mismatch: expected: "
-                         ++ show ty ++ " got: " ++ show ty'
+  when (cty /= cty') $
+    throwM $ Err pos $ "type mismatch: expected: "
+                    ++ show ty ++ " got: " ++ show ty'
 
 lookTy :: (MonadThrow m) => Pos -> Symbol -> TEnv -> m Ty
 lookTy pos tySym tenv = case look tySym tenv of
@@ -50,6 +51,22 @@ transExp exp tenv venv = case exp of
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
   AST.VarExp var    -> trVar var venv
+
+  AST.AssignExp pos var exp -> do
+    ExpTy _ ty <- transVar var tenv venv
+    ExpTy _ ty' <- transExp exp tenv venv
+    checkTy pos ty ty'
+    return $ ExpTy EUnit TUnit
+
+  AST.IfExp (AST.IfExp' pos test thenExp elseExp) -> do
+    ExpTy _ testTy <- transExp test tenv venv
+    ExpTy _ thenTy <- transExp thenExp tenv venv
+    elseTy <- mapM
+      (\exp -> (\(ExpTy _ ty) -> ty) <$> transExp exp tenv venv)
+      elseExp
+    checkTy pos testTy TInt
+    checkTy pos thenTy $ fromMaybe TUnit elseTy
+    return $ ExpTy EUnit thenTy
 
   AST.RecordExp (AST.RecordExp' pos tySym fields) -> do
     ty <- lookTy pos tySym tenv >>= actualTy
@@ -70,11 +87,10 @@ transExp exp tenv venv = case exp of
       tys' <- fmap (fmap (\(ExpTy _ ty) -> ty))
             . traverse (\exp -> transExp exp tenv venv)
             $ args
-      -- TODO(DarinM223): check with checkTy
       if tys == tys'
         then ExpTy EUnit <$> actualTy rt
-        -- TODO(DarinM223): make error easier to understand.
-        else throwM $ Err pos "parameters don't match"
+        else throwM $ Err pos $ "parameters " ++ show tys
+                             ++ " don't match with " ++ show tys'
     _ -> throwM $ Err pos "function not found"
 
   AST.LetExp (AST.LetExp' _ decs body) -> do
