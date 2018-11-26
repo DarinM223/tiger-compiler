@@ -64,9 +64,26 @@ transExp exp tenv venv = case exp of
     elseTy <- mapM
       (\exp -> (\(ExpTy _ ty) -> ty) <$> transExp exp tenv venv)
       elseExp
-    checkTy pos testTy TInt
-    checkTy pos thenTy $ fromMaybe TUnit elseTy
+    checkTy pos TInt testTy
+    checkTy pos (fromMaybe TUnit elseTy) thenTy
     return $ ExpTy EUnit thenTy
+
+  AST.WhileExp (AST.WhileExp' pos test body) -> do
+    ExpTy _ testTy <- transExp test tenv venv
+    ExpTy _ bodyTy <- transExp body tenv venv
+    checkTy pos TInt testTy
+    checkTy pos TUnit bodyTy
+    return $ ExpTy EUnit bodyTy
+
+  AST.ForExp (AST.ForExp' pos varSym _ lo hi body) -> do
+    ExpTy _ loTy <- transExp lo tenv venv
+    ExpTy _ hiTy <- transExp hi tenv venv
+    checkTy pos TInt loTy
+    checkTy pos TInt hiTy
+    let venv' = enter varSym (VarEntry TInt) venv
+    ExpTy _ bodyTy <- transExp body tenv venv'
+    checkTy pos TUnit bodyTy
+    return $ ExpTy EUnit bodyTy
 
   AST.RecordExp (AST.RecordExp' pos tySym fields) -> do
     ty <- lookTy pos tySym tenv >>= actualTy

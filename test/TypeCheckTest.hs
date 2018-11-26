@@ -17,6 +17,8 @@ tests = testGroup "Type checking tests"
     testExpTy testCall (ExpTy EUnit TInt) False
   , testCase "Tests records" testRecord
   , testCase "Test if else" testIfElse
+  , testCase "Test while" testWhile
+  , testCase "Test for" testFor
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -95,4 +97,42 @@ testIfElse = testTable tests expected
     , const $ Just $ ExpTy EUnit TUnit
     , const $ Just $ ExpTy EUnit TInt
     , const $ Just $ ExpTy EUnit TInt
+    ]
+
+testWhile :: IO ()
+testWhile = testTable tests expected
+ where
+  tests =
+    [ (False, "while 1 do flush()")
+    , (False, "while \"hello\" do flush()")
+    , (False, "while 1 do 1")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
+    , const Nothing
+    ]
+
+testFor :: IO ()
+testFor = testTable tests expected
+ where
+  tests =
+    [ (False, "for i := 0 to 10 do flush()")
+    , (False, "for i := 0 to 10 do print(chr(i))")
+    , (False, "for i := 0 to 10 do print(i)")
+    , (False, "let var i := \"hello\"\n in for i := 0 to 10 do print(chr(i)) end")
+    , (False, "for i := 0 to \"hello\" do flush()")
+    , (False, "for i := \"hello\" to 10 do flush()")
+    , (False, "for i := 0 to 10 do 1")
+    , (False, "for i := ord(\"a\") to ord(\"b\") do flush()")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
+    , const Nothing
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
     ]
