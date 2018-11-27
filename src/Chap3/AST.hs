@@ -30,7 +30,6 @@ data Exp = VarExp Var
          | BreakExp Pos
          | LetExp LetExp'
          | ArrayExp ArrayExp'
-         | SymbolExp Symbol
          deriving (Show)
 
 data CallExp' = CallExp'

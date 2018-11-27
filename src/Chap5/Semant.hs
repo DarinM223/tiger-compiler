@@ -50,6 +50,7 @@ transExp exp tenv venv = case exp of
   AST.NilExp        -> return $ ExpTy EUnit TNil
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
+  AST.BreakExp _    -> return $ ExpTy EUnit TUnit
   AST.VarExp var    -> trVar var venv
 
   AST.AssignExp pos var exp -> do
@@ -94,6 +95,17 @@ transExp exp tenv venv = case exp of
         return $ ExpTy EUnit ty
       _ -> throwM $ Err pos $ "type " ++ show tySym ++ " is not a record"
 
+  AST.ArrayExp (AST.ArrayExp' pos tySym size init) -> do
+    arrayTy <- lookTy pos tySym tenv >>= actualTy
+    case arrayTy of
+      TArray ty _ -> do
+        ExpTy _ sizeTy <- transExp size tenv venv
+        ExpTy _ initTy <- transExp init tenv venv
+        checkTy pos TInt sizeTy
+        checkTy pos ty initTy
+        return $ ExpTy EUnit arrayTy
+      _ -> throwM $ Err pos $ "type " ++ show tySym ++ " is not an array"
+
   AST.SeqExp exps -> foldlM
     (\_ (_, exp) -> transExp exp tenv venv)
     (ExpTy EUnit TNil)
@@ -124,7 +136,6 @@ transExp exp tenv venv = case exp of
       _            -> throwM $ Err pos "integer required"
 
   AST.OpExp _ _ _ _ -> undefined
-  exp -> error $ show exp
  where
   trField venv (pos, symbol, exp) = (\(ExpTy _ ty) -> (pos, symbol, ty))
                                 <$> transExp exp tenv venv

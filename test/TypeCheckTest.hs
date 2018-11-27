@@ -19,6 +19,7 @@ tests = testGroup "Type checking tests"
   , testCase "Test if else" testIfElse
   , testCase "Test while" testWhile
   , testCase "Test for" testFor
+  , testCase "Test array" testArray
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -135,4 +136,22 @@ testFor = testTable tests expected
     , const Nothing
     , const Nothing
     , const $ Just $ ExpTy EUnit TUnit
+    ]
+
+testArray :: IO ()
+testArray = testTable tests expected
+ where
+  tests =
+    [ (False, "let type intArray = array of int\nvar a := intArray [10] of 0 in a end")
+    , (False, "let type intArray = array of int\nvar a := intArray [\"1\"] of 0 in a end")
+    , (False, "let type intArray = int\nvar a := intArray [10] of 0 in a end")
+    , (False, "let type ia = array of int\ntype ia2 = ia\nvar a := ia2 [10] of 0 in a end")
+    , (False, "let type intArray = array of string\nvar a := intArray [ord(\"a\")] of chr(1) in a end")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit $ TArray TInt UniqueIgnore
+    , const Nothing
+    , const Nothing
+    , const $ Just $ ExpTy EUnit $ TArray TInt UniqueIgnore
+    , const $ Just $ ExpTy EUnit $ TArray TString UniqueIgnore
     ]
