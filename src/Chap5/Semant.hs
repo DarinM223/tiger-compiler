@@ -16,8 +16,11 @@ import qualified Data.IntMap as IM
 import qualified Data.HashMap.Strict as HM
 
 data Exp = EUnit deriving (Show, Eq)
-
 data ExpTy = ExpTy Exp Ty deriving (Show, Eq)
+data OpType = Arithmetic -- ^ Operation over two integers
+            | Comparison -- ^ Operation over integers or strings
+            | Equality   -- ^ Operations over any two equal types
+            deriving (Show, Eq)
 
 data Err = Err Pos String deriving (Show)
 instance Exception Err
@@ -44,6 +47,32 @@ lookTy :: (MonadThrow m) => Pos -> Symbol -> TEnv -> m Ty
 lookTy pos tySym tenv = case look tySym tenv of
   Just ty -> return ty
   _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
+
+opTypeFromOp :: AST.Op -> OpType
+opTypeFromOp = \case
+  AST.PlusOp   -> Arithmetic
+  AST.MinusOp  -> Arithmetic
+  AST.TimesOp  -> Arithmetic
+  AST.DivideOp -> Arithmetic
+  AST.EqOp     -> Equality
+  AST.NeqOp    -> Equality
+  AST.AndOp    -> Arithmetic
+  AST.OrOp     -> Arithmetic
+  AST.LtOp     -> Comparison
+  AST.LeOp     -> Comparison
+  AST.GtOp     -> Comparison
+  AST.GeOp     -> Comparison
+
+checkOpType :: OpType -> Ty -> Bool
+checkOpType Arithmetic ty = ty == TInt
+checkOpType Comparison ty = ty == TInt || ty == TString
+checkOpType Equality ty   = case ty of
+  TInt        -> True
+  TString     -> True
+  TRecord _ _ -> True
+  TArray _ _  -> True
+  TNil        -> True
+  _           -> False
 
 transExp :: (MonadIO m, MonadThrow m) => AST.Exp -> TEnv -> VEnv -> m ExpTy
 transExp exp tenv venv = case exp of
@@ -128,14 +157,15 @@ transExp exp tenv venv = case exp of
       (tenv, venv) decs
     transExp body tenv' venv'
 
-  AST.OpExp left AST.PlusOp right pos -> do
+  AST.OpExp left op right pos -> do
     ExpTy _ tyleft <- transExp left tenv venv
     ExpTy _ tyright <- transExp right tenv venv
-    case (tyleft, tyright) of
-      (TInt, TInt) -> return $ ExpTy EUnit TInt
-      _            -> throwM $ Err pos "integer required"
-
-  AST.OpExp _ _ _ _ -> undefined
+    let opType = opTypeFromOp op
+        check  = if checkOpType opType tyleft
+          then checkTy pos tyleft tyright
+          else throwM $ Err pos $ "Invalid type " ++ show tyleft
+                               ++ " for " ++ show opType
+    ExpTy EUnit TInt <$ check
  where
   trField venv (pos, symbol, exp) = (\(ExpTy _ ty) -> (pos, symbol, ty))
                                 <$> transExp exp tenv venv

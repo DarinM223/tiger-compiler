@@ -20,6 +20,7 @@ tests = testGroup "Type checking tests"
   , testCase "Test while" testWhile
   , testCase "Test for" testFor
   , testCase "Test array" testArray
+  , testCase "Test operators" testOps
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -154,4 +155,36 @@ testArray = testTable tests expected
     , const Nothing
     , const $ Just $ ExpTy EUnit $ TArray TInt UniqueIgnore
     , const $ Just $ ExpTy EUnit $ TArray TString UniqueIgnore
+    ]
+
+testOps :: IO ()
+testOps = testTable tests expected
+ where
+  tests =
+    [ (False, "1 + 2")
+    , (False, "1 + \"hello\"")
+    , (False, "\"hello\" + \"world\"")
+    , (False, "\"hello\" & \"world\"")
+    , (False, "1 & 1")
+    , (False, "\"hello\" < \"world\"")
+    , (False, "nil = nil")
+    , (False, "nil <= nil")
+    , (False, "let type arr = array of int in (arr [10] of 0) = (arr [20] of 1) end")
+    , (False, "let type rec={a:int,b:string} in rec{a=1,b=\"a\"} = rec{a=2,b=\"b\"} end")
+    , (False, "let type rec1={a:int}\ntype rec2={b:string} in rec1{a=1}=rec2{b=\"a\"} end")
+    , (False, "flush() = flush()")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit TInt
+    , const Nothing
+    , const Nothing
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TInt
+    , const $ Just $ ExpTy EUnit TInt
+    , const $ Just $ ExpTy EUnit TInt
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TInt
+    , const $ Just $ ExpTy EUnit TInt
+    , const Nothing
+    , const Nothing
     ]

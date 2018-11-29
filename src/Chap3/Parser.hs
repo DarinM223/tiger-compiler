@@ -111,7 +111,8 @@ opExp :: Parser Exp
 opExp = makeExprParser term operators
  where
   term = sc *> term' <* sc
-  term' = (NilExp <$ rword "nil")
+  term' = (RecordExp <$> try record)
+      <|> (NilExp <$ rword "nil")
       <|> (IntExp <$> integer)
       <|> (StringExp <$> getSourcePos <*> string'')
       <|> (CallExp <$> try call)
@@ -189,17 +190,17 @@ letExp = LetExp'
      <*> (SeqExp <$> (rword "in" *> seq' <* rword "end"))
 
 expr :: Parser Exp
-expr = (NilExp <$ rword "nil")
-   <|> (BreakExp <$> getSourcePos <* rword "break")
+expr = (BreakExp <$> getSourcePos <* rword "break")
    <|> (IfExp <$> ifExp)
    <|> (WhileExp <$> while)
    <|> (ForExp <$> for)
    <|> (LetExp <$> letExp)
    <|> (ArrayExp <$> try array)
-   <|> (RecordExp <$> try record)
-   <|> try (symbol "(" *> expr <* symbol ")")
    <|> try assign
    <|> try opExp
+   <|> (RecordExp <$> try record)
+   <|> try (symbol "(" *> expr <* symbol ")")
+   <|> (NilExp <$ rword "nil")
    <|> (CallExp <$> try call)
    <|> (IntExp <$> integer)
    <|> (StringExp <$> getSourcePos <*> string'')
