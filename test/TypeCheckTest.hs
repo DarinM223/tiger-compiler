@@ -21,6 +21,7 @@ tests = testGroup "Type checking tests"
   , testCase "Test for" testFor
   , testCase "Test array" testArray
   , testCase "Test operators" testOps
+  , testCase "Test assignment" testAssign
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -185,6 +186,30 @@ testOps = testTable tests expected
     , const Nothing
     , const $ Just $ ExpTy EUnit TInt
     , const $ Just $ ExpTy EUnit TInt
+    , const Nothing
+    , const Nothing
+    ]
+
+testAssign :: IO ()
+testAssign = testTable tests expected
+ where
+  tests =
+    [ (False, "let var i := 0 in i := i + 1 end")
+    , (False, "let type a = array of int\nvar ar := a[10] of 0 in ar[0] := 1 end")
+    , (False, "let var i := 0 in i[0] := 1 end")
+    , (False, "let type r = {r:int}\nvar v := r{r=1} in v.r := 2 end")
+    , (False, "let var i := 0 in i.foo := 1 end")
+    , (False, "let type r={r:int}\ntype a=array of r\nvar ar := a[10] of r{r=1} in ar[0].r := 2 end")
+    , (False, "let type a = array of int\n var ar := a[10] of 0 in ar[0] := \"hello\" end")
+    , (False, "let type r = {r:int}\nvar v := r{r=1} in v.r := \"hello\" end")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
     , const Nothing
     , const Nothing
     ]

@@ -25,8 +25,25 @@ data OpType = Arithmetic -- ^ Operation over two integers
 data Err = Err Pos String deriving (Show)
 instance Exception Err
 
-transVar :: AST.Var -> TEnv -> VEnv -> m ExpTy
-transVar = undefined
+transVar :: (MonadIO m, MonadThrow m) => AST.Var -> TEnv -> VEnv -> m ExpTy
+transVar var tenv venv = case var of
+  AST.SimpleVar id pos -> case look id venv of
+    Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
+    _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
+  AST.FieldVar var' id pos -> do
+    ExpTy _ ty <- transVar var' tenv venv
+    case ty of
+      TRecord fields _ -> case lookup id fields of
+        Just ty -> ExpTy EUnit <$> actualTy ty
+        Nothing -> throwM $ Err pos $ "field " ++ show id ++ " not in record"
+      _ -> throwM $ Err pos $ "lvalue not a record type"
+  AST.SubscriptVar var' exp pos -> do
+    ty <- transVar var' tenv venv >>= \(ExpTy _ var) -> actualTy var
+    ExpTy _ expTy <- transExp exp tenv venv
+    checkTy pos TInt expTy
+    case ty of
+      TArray ty _ -> return $ ExpTy EUnit ty
+      _           -> throwM $ Err pos $ "lvalue not an array type"
 
 -- | Trace through TName types to their underlying definitions.
 actualTy :: (MonadIO m) => Ty -> m Ty
@@ -80,7 +97,7 @@ transExp exp tenv venv = case exp of
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
   AST.BreakExp _    -> return $ ExpTy EUnit TUnit
-  AST.VarExp var    -> trVar var venv
+  AST.VarExp var    -> transVar var tenv venv
 
   AST.AssignExp pos var exp -> do
     ExpTy _ ty <- transVar var tenv venv
@@ -169,11 +186,6 @@ transExp exp tenv venv = case exp of
  where
   trField venv (pos, symbol, exp) = (\(ExpTy _ ty) -> (pos, symbol, ty))
                                 <$> transExp exp tenv venv
-  trVar (AST.SimpleVar id pos) venv = case look id venv of
-    Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
-    _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
-  trVar _ _ = undefined
-
 matchTys :: (MonadIO m, MonadThrow m)
          => Pos
          -> [(Symbol, Ty)]
