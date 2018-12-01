@@ -22,6 +22,7 @@ tests = testGroup "Type checking tests"
   , testCase "Test array" testArray
   , testCase "Test operators" testOps
   , testCase "Test assignment" testAssign
+  , testCase "Test recursive declarations" testRec
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -212,4 +213,14 @@ testAssign = testTable tests expected
     , const $ Just $ ExpTy EUnit TUnit
     , const Nothing
     , const Nothing
+    ]
+
+testRec :: IO ()
+testRec = testTable tests expected
+ where
+  tests =
+    [ (True, "let type a = b\ntype b = c\ntype c = int in flush() end")
+    ]
+  expected =
+    [ const $ Just $ ExpTy EUnit TUnit
     ]

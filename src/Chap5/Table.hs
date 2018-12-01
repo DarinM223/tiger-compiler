@@ -26,12 +26,18 @@ instance Eq Unique where
 instance Show Unique where
   show _ = ""
 
-mkUnique :: IO Unique
-mkUnique = Unique <$> newIORef ()
+mkUnique :: (MonadIO m) => m Unique
+mkUnique = liftIO $ Unique <$> newIORef ()
 
 newtype TRef = TRef (IORef (Maybe Ty)) deriving (Eq)
 instance Show TRef where
   show _ = ""
+
+mkTRef :: (MonadIO m) => m TRef
+mkTRef = liftIO $ TRef <$> newIORef Nothing
+
+writeTRef :: (MonadIO m) => TRef -> Ty -> m ()
+writeTRef (TRef ref) ty = liftIO $ writeIORef ref $ Just ty
 
 data Ty = TInt
         | TString

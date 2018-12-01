@@ -237,15 +237,21 @@ transDec dec tenv venv = case dec of
   enterParam venv (name, ty) = enter name (VarEntry ty) venv
 
 transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
-transTy (AST.NameTy sym pos) tenv = lookTy pos sym tenv
+transTy (AST.NameTy sym pos) tenv = go [] sym
+ where
+  go seen sym
+    | sym `elem` seen = throwM $ Err pos $ "Cyclic depedency for " ++ show sym
+    | otherwise       = lookTy pos sym tenv >>= \case
+      ty@(TName sym' ref) -> ty <$ (writeTRef ref =<< go (sym:seen) sym')
+      ty                  -> return ty
 transTy (AST.RecordTy fields) tenv =
-  TRecord <$> trFields fields tenv <*> liftIO mkUnique
+  TRecord <$> trFields fields tenv <*> mkUnique
  where
   -- TODO(DarinM223): check for duplicate fields in record
   trFields fields tenv = traverse (trField tenv) fields
   trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
 transTy (AST.ArrayTy sym pos) tenv =
-  TArray <$> lookTy pos sym tenv <*> liftIO mkUnique
+  TArray <$> lookTy pos sym tenv <*> mkUnique
 
 testTy :: String -> IO ExpTy
 testTy text = runMyParserT ((,) <$> mkEnvs <*> parseExpr) text >>= \case
