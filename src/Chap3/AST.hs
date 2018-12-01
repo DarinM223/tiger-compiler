@@ -80,9 +80,9 @@ data ArrayExp' = ArrayExp'
   } deriving (Show)
 
 -- TODO(DarinM223): change to be multiple decs instead of a single dec.
-data Dec = FunctionDec FunDec
+data Dec = FunctionDec [FunDec]
          | VarDec VarDec'
-         | TypeDec TypeDec'
+         | TypeDec [TypeDec']
          deriving (Show)
 
 data Field = Field

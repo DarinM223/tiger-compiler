@@ -47,9 +47,9 @@ fundec = FunDec
      <*> (symbol "=" *> expr)
 
 dec :: Parser Dec
-dec = (FunctionDec <$> fundec)
+dec = (FunctionDec <$> sepBy1 fundec sc)
   <|> (VarDec <$> vardec)
-  <|> (TypeDec <$> typedec)
+  <|> (TypeDec <$> sepBy1 typedec sc)
 
 -- Left factoring lvalue grammar:
 --

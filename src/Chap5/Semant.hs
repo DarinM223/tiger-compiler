@@ -217,23 +217,33 @@ transDec dec tenv venv = case dec of
     checkTy pos ty ty'
     return (tenv, enter name (VarEntry ty) venv)
 
-  AST.TypeDec (AST.TypeDec' _ name ty) ->
+  AST.TypeDec decs -> foldlM
+    (\(tenv, venv) dec -> trType dec tenv venv)
+    (tenv, venv)
+    decs
+
+  AST.FunctionDec decs -> foldlM
+    (\(tenv, venv) dec -> trFun dec tenv venv)
+    (tenv, venv)
+    decs
+ where
+  trType (AST.TypeDec' _ name ty) tenv venv =
     (, venv) <$> (liftA2 (enter name) (transTy ty tenv) (pure tenv))
 
-  AST.FunctionDec (AST.FunDec pos name params Nothing body) ->
-    trFunDec pos name params body TUnit
+  trFun dec tenv venv = case dec of
+    AST.FunDec pos name params Nothing body ->
+      trFun' pos name params body venv TUnit
+    AST.FunDec pos name params (Just (pos', rt)) body ->
+      lookTy pos' rt tenv >>= trFun' pos name params body venv
 
-  AST.FunctionDec (AST.FunDec pos name params (Just (pos', rt)) body) ->
-    lookTy pos' rt tenv >>= trFunDec pos name params body
- where
-  lookTyField (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
-  trFunDec pos name params body ty = do
+  trFun' pos name params body venv ty = do
     params' <- traverse lookTyField params
     let venv'  = enter name (FunEntry (fmap snd params') ty) venv
         venv'' = foldl' enterParam venv' params'
     ExpTy _ ty' <- transExp body tenv venv''
     checkTy pos ty ty'
     return (tenv, venv')
+  lookTyField (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
   enterParam venv (name, ty) = enter name (VarEntry ty) venv
 
 transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
