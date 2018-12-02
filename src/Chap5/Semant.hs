@@ -30,7 +30,7 @@ transVar var tenv venv = case var of
     Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
     _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
   AST.FieldVar var' id pos -> do
-    ExpTy _ ty <- transVar var' tenv venv
+    ty <- transVar var' tenv venv >>= \(ExpTy _ var) -> actualTy var
     case ty of
       TRecord fields _ -> case lookup id fields of
         Just ty -> ExpTy EUnit <$> actualTy ty
@@ -247,23 +247,23 @@ transDec dec tenv venv = case dec of
       _                  -> return ()
 
     -- Third pass: check declarations for cycles.
-    mapM_ (checkCycles tenv' venv) decs
-
-    (, venv) <$> foldlM
-      (\env dec -> trType dec env)
-      tenv'
-      decs
+    mapM_ (checkCycles tenv') decs
+    return (tenv', venv)
 
   AST.FunctionDec decs -> foldlM
     (\(tenv, venv) dec -> trFun dec tenv venv)
     (tenv, venv)
     decs
  where
-  -- TODO(DarinM223): check for cycles
-  checkCycles _ _ _ = return ()
-
-  trType (AST.TypeDec' _ name ty) tenv =
-    enter name <$> transTy ty tenv <*> pure tenv
+  checkCycles tenv (AST.TypeDec' pos name _) = go [] name
+   where
+    go seen name
+      | name `elem` seen = throwM $ Err pos $ "Cyclical dependency found"
+      | otherwise = case look name tenv of
+        Just(TName _ ref) -> readTRef ref >>= \case
+          Just (TName sym _) -> go (name:seen) sym
+          _                  -> return ()
+        _ -> return ()
 
   trFun dec tenv venv = case dec of
     AST.FunDec pos name params Nothing body ->

@@ -36,6 +36,9 @@ instance Show TRef where
 mkTRef :: (MonadIO m) => m TRef
 mkTRef = liftIO $ TRef <$> newIORef Nothing
 
+readTRef :: (MonadIO m) => TRef -> m (Maybe Ty)
+readTRef (TRef ref) = liftIO $ readIORef ref
+
 writeTRef :: (MonadIO m) => TRef -> Ty -> m ()
 writeTRef (TRef ref) ty = liftIO $ writeIORef ref $ Just ty
 

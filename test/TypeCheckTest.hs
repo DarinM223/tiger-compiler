@@ -220,7 +220,9 @@ testRec = testTable tests expected
  where
   tests =
     [ (False, "let type a = b\ntype b = c\ntype c = int\nvar a : a := 2 in a end")
+    , (False, "let type a = b\ntype b = c\ntype c = a\nvar a : a := 2 in a end")
     ]
   expected =
     [ const $ Just $ ExpTy EUnit TInt
+    , const Nothing
     ]
