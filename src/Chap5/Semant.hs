@@ -1,7 +1,6 @@
 module Chap5.Semant where
 
-import Control.Monad (when)
-import Control.Applicative (liftA2)
+import Control.Monad (forM_, when)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Chap2.Lexer (runMyParserT)
@@ -217,26 +216,62 @@ transDec dec tenv venv = case dec of
     checkTy pos ty ty'
     return (tenv, enter name (VarEntry ty) venv)
 
-  AST.TypeDec decs -> foldlM
-    (\(tenv, venv) dec -> trType dec tenv venv)
-    (tenv, venv)
-    decs
+  AST.TypeDec decs -> do
+    -- First pass: for each declaration, add a TName with the left side symbol.
+    --
+    -- Example:
+    -- type a = b
+    -- type b = c
+    --
+    -- Result tenv:
+    -- a: TName "a" (Ref Nothing)
+    -- b: TName "b" (Ref Nothing)
+    tenv' <- foldlM
+      (\env (AST.TypeDec' _ name _) ->
+        enter name <$> (TName <$> pure name <*> mkTRef) <*> pure env)
+      tenv
+      decs
+
+    -- Second pass: if left side symbol is a TName, then translate
+    -- the right side type and set the TName's ref to the translated type.
+    --
+    -- Example:
+    -- type a = b
+    -- type b = int
+    --
+    -- Result tenv:
+    -- a: TName "a" (Ref (Just (pointer to b)))
+    -- b: TName "b" (Ref (Just (pointer to int)))
+    forM_ decs $ \(AST.TypeDec' _ lsym ty) -> case look lsym tenv' of
+      Just (TName _ ref) -> writeTRef ref =<< transTy ty tenv'
+      _                  -> return ()
+
+    -- Third pass: check declarations for cycles.
+    mapM_ (checkCycles tenv' venv) decs
+
+    (, venv) <$> foldlM
+      (\env dec -> trType dec env)
+      tenv'
+      decs
 
   AST.FunctionDec decs -> foldlM
     (\(tenv, venv) dec -> trFun dec tenv venv)
     (tenv, venv)
     decs
  where
-  trType (AST.TypeDec' _ name ty) tenv venv =
-    (, venv) <$> (liftA2 (enter name) (transTy ty tenv) (pure tenv))
+  -- TODO(DarinM223): check for cycles
+  checkCycles _ _ _ = return ()
+
+  trType (AST.TypeDec' _ name ty) tenv =
+    enter name <$> transTy ty tenv <*> pure tenv
 
   trFun dec tenv venv = case dec of
     AST.FunDec pos name params Nothing body ->
-      trFun' pos name params body venv TUnit
+      trFun' pos name params body tenv venv TUnit
     AST.FunDec pos name params (Just (pos', rt)) body ->
-      lookTy pos' rt tenv >>= trFun' pos name params body venv
+      lookTy pos' rt tenv >>= trFun' pos name params body tenv venv
 
-  trFun' pos name params body venv ty = do
+  trFun' pos name params body tenv venv ty = do
     params' <- traverse lookTyField params
     let venv'  = enter name (FunEntry (fmap snd params') ty) venv
         venv'' = foldl' enterParam venv' params'
@@ -247,13 +282,7 @@ transDec dec tenv venv = case dec of
   enterParam venv (name, ty) = enter name (VarEntry ty) venv
 
 transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
-transTy (AST.NameTy sym pos) tenv = go [] sym
- where
-  go seen sym
-    | sym `elem` seen = throwM $ Err pos $ "Cyclic depedency for " ++ show sym
-    | otherwise       = lookTy pos sym tenv >>= \case
-      ty@(TName sym' ref) -> ty <$ (writeTRef ref =<< go (sym:seen) sym')
-      ty                  -> return ty
+transTy (AST.NameTy sym pos) tenv  = lookTy pos sym tenv
 transTy (AST.RecordTy fields) tenv =
   TRecord <$> trFields fields tenv <*> mkUnique
  where

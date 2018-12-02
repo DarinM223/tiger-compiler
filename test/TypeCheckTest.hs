@@ -219,8 +219,8 @@ testRec :: IO ()
 testRec = testTable tests expected
  where
   tests =
-    [ (True, "let type a = b\ntype b = c\ntype c = int in flush() end")
+    [ (False, "let type a = b\ntype b = c\ntype c = int\nvar a : a := 2 in a end")
     ]
   expected =
-    [ const $ Just $ ExpTy EUnit TUnit
+    [ const $ Just $ ExpTy EUnit TInt
     ]
