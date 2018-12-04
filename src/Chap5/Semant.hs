@@ -107,7 +107,7 @@ transExp exp tenv venv = case exp of
   AST.IfExp (AST.IfExp' pos test thenExp elseExp) -> do
     ExpTy _ testTy <- transExp test tenv venv
     ExpTy _ thenTy <- transExp thenExp tenv venv
-    elseTy <- mapM
+    elseTy <- traverse
       (\exp -> (\(ExpTy _ ty) -> ty) <$> transExp exp tenv venv)
       elseExp
     checkTy pos TInt testTy
@@ -247,15 +247,34 @@ transDec dec tenv venv = case dec of
       _                  -> return ()
 
     -- Third pass: check declarations for cycles.
-    mapM_ (checkCycles tenv') decs
+    mapM_ (\(AST.TypeDec' pos name _) -> checkCycles pos name tenv') decs
     return (tenv', venv)
 
-  AST.FunctionDec decs -> foldlM
-    (\(tenv, venv) dec -> trFun dec tenv venv)
-    (tenv, venv)
-    decs
+  AST.FunctionDec decs -> do
+    -- First pass: gather the headers of all the functions
+    -- (function name, function parameter types, function return type)
+    venv' <- foldlM
+      (\env (AST.FunDec _ name params rt _) ->
+        enter name <$> funHeader tenv params rt <*> pure env)
+      venv
+      decs
+
+    -- Second pass: for each declaration, insert the parameter
+    -- names into temporary environment and typecheck the body with it.
+    -- Then check that the return type is the same as the function's.
+    forM_ decs $ \(AST.FunDec pos _ params rt body) -> do
+      venv'' <- foldlM
+        (\env (AST.Field _ name ty _) -> enter name
+                                     <$> (VarEntry <$> lookTy pos ty tenv)
+                                     <*> pure env)
+        venv'
+        params
+      rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty tenv) rt
+      ExpTy _ ty <- transExp body tenv venv''
+      checkTy pos rty ty
+    return (tenv, venv')
  where
-  checkCycles tenv (AST.TypeDec' pos name _) = go [] name
+  checkCycles pos name tenv = go [] name
    where
     go seen name
       | name `elem` seen = throwM $ Err pos $ "Cyclical dependency found"
@@ -264,22 +283,9 @@ transDec dec tenv venv = case dec of
           Just (TName sym _) -> go (name:seen) sym
           _                  -> return ()
         _ -> return ()
-
-  trFun dec tenv venv = case dec of
-    AST.FunDec pos name params Nothing body ->
-      trFun' pos name params body tenv venv TUnit
-    AST.FunDec pos name params (Just (pos', rt)) body ->
-      lookTy pos' rt tenv >>= trFun' pos name params body tenv venv
-
-  trFun' pos name params body tenv venv ty = do
-    params' <- traverse lookTyField params
-    let venv'  = enter name (FunEntry (fmap snd params') ty) venv
-        venv'' = foldl' enterParam venv' params'
-    ExpTy _ ty' <- transExp body tenv venv''
-    checkTy pos ty ty'
-    return (tenv, venv')
-  lookTyField (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
-  enterParam venv (name, ty) = enter name (VarEntry ty) venv
+  funHeader tenv fields rt = FunEntry
+    <$> traverse (\(AST.Field pos _ ty _) -> lookTy pos ty tenv) fields
+    <*> maybe (pure TUnit) (\(pos, ty) -> lookTy pos ty tenv) rt
 
 transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
 transTy (AST.NameTy sym pos) tenv  = lookTy pos sym tenv

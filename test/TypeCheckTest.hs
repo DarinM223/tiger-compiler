@@ -221,8 +221,14 @@ testRec = testTable tests expected
   tests =
     [ (False, "let type a = b\ntype b = c\ntype c = int\nvar a : a := 2 in a end")
     , (False, "let type a = b\ntype b = c\ntype c = a\nvar a : a := 2 in a end")
+    , (False, "let function add(a : int, b : int) : int = add(a - 1, b - 1) in add(1, 2) end")
+    , (False, "let function a(i:int):int = b(i)\nfunction b(i:int):int = a(i) in a(1) end")
+    , (False, "let function a(i:int):int = b(i)\nfunction b(i:int):string = \"a\" in a(1) end")
     ]
   expected =
     [ const $ Just $ ExpTy EUnit TInt
+    , const Nothing
+    , const $ Just $ ExpTy EUnit TInt
+    , const $ Just $ ExpTy EUnit TInt
     , const Nothing
     ]
