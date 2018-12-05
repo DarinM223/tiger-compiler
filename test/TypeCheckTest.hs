@@ -23,6 +23,7 @@ tests = testGroup "Type checking tests"
   , testCase "Test operators" testOps
   , testCase "Test assignment" testAssign
   , testCase "Test recursive declarations" testRec
+  , testCase "Test break" testBreak
   ]
 
 testExpTy :: IO ExpTy -> ExpTy -> Bool -> IO ()
@@ -243,4 +244,24 @@ testRec = testTable tests expected
     , const Nothing
     , const Nothing
     , const Nothing
+    ]
+
+testBreak :: IO ()
+testBreak = testTable tests expected
+ where
+  tests =
+    [ (False, "break")
+    , (False, "while 1 do break")
+    , (False, "for i := 0 to 10 do break")
+    , (False, "while 1 do let function foo(i:int)=(print(\"a\");break) in foo(1) end")
+    , (False, "for i := 0 to 10 do if 1 then flush() else break")
+    , (False, "for i := 0 to 10 do (break; while 1 do break)")
+    ]
+  expected =
+    [ const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
     ]

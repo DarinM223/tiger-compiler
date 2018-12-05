@@ -25,21 +25,22 @@ data OpType = Arithmetic -- ^ Operation over two integers
 data Err = Err Pos String deriving (Show)
 instance Exception Err
 
-transVar :: (MonadIO m, MonadThrow m) => AST.Var -> TEnv -> VEnv -> m ExpTy
-transVar var tenv venv = case var of
+transVar :: (MonadIO m, MonadThrow m)
+         => AST.Var -> TEnv -> VEnv -> Bool -> m ExpTy
+transVar var tenv venv break = case var of
   AST.SimpleVar id pos -> case look id venv of
     Just (VarEntry ty) -> ExpTy EUnit <$> actualTy ty
     _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
   AST.FieldVar var' id pos -> do
-    ty <- transVar var' tenv venv >>= \(ExpTy _ var) -> actualTy var
+    ty <- transVar var' tenv venv break >>= \(ExpTy _ var) -> actualTy var
     case ty of
       TRecord fields _ -> case lookup id fields of
         Just ty -> ExpTy EUnit <$> actualTy ty
         Nothing -> throwM $ Err pos $ "field " ++ show id ++ " not in record"
       _ -> throwM $ Err pos $ "lvalue not a record type"
   AST.SubscriptVar var' exp pos -> do
-    ty <- transVar var' tenv venv >>= \(ExpTy _ var) -> actualTy var
-    ExpTy _ expTy <- transExp exp tenv venv
+    ty <- transVar var' tenv venv break >>= \(ExpTy _ var) -> actualTy var
+    ExpTy _ expTy <- transExp exp tenv venv break
     checkTy pos TInt expTy
     case ty of
       TArray ty _ -> return $ ExpTy EUnit ty
@@ -98,44 +99,48 @@ checkOpType Equality ty   = case ty of
   TNil        -> True
   _           -> False
 
-transExp :: (MonadIO m, MonadThrow m) => AST.Exp -> TEnv -> VEnv -> m ExpTy
-transExp exp tenv venv = case exp of
+transExp :: (MonadIO m, MonadThrow m)
+         => AST.Exp -> TEnv -> VEnv -> Bool -> m ExpTy
+transExp exp tenv venv break = case exp of
   AST.NilExp        -> return $ ExpTy EUnit TNil
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
-  AST.BreakExp _    -> return $ ExpTy EUnit TUnit
-  AST.VarExp var    -> transVar var tenv venv
+  AST.VarExp var    -> transVar var tenv venv break
+
+  AST.BreakExp pos -> if break
+    then return $ ExpTy EUnit TUnit
+    else throwM $ Err pos $ "Break statement not inside enclosing loop"
 
   AST.AssignExp pos var exp -> do
-    ExpTy _ ty <- transVar var tenv venv
-    ExpTy _ ty' <- transExp exp tenv venv
+    ExpTy _ ty <- transVar var tenv venv break
+    ExpTy _ ty' <- transExp exp tenv venv break
     checkTy pos ty ty'
     return $ ExpTy EUnit TUnit
 
   AST.IfExp (AST.IfExp' pos test thenExp elseExp) -> do
-    ExpTy _ testTy <- transExp test tenv venv
-    ExpTy _ thenTy <- transExp thenExp tenv venv
+    ExpTy _ testTy <- transExp test tenv venv break
+    ExpTy _ thenTy <- transExp thenExp tenv venv break
     elseTy <- traverse
-      (\exp -> (\(ExpTy _ ty) -> ty) <$> transExp exp tenv venv)
+      (\exp -> (\(ExpTy _ ty) -> ty) <$> transExp exp tenv venv break)
       elseExp
     checkTy pos TInt testTy
     checkTy pos (fromMaybe TUnit elseTy) thenTy
     return $ ExpTy EUnit thenTy
 
   AST.WhileExp (AST.WhileExp' pos test body) -> do
-    ExpTy _ testTy <- transExp test tenv venv
-    ExpTy _ bodyTy <- transExp body tenv venv
+    ExpTy _ testTy <- transExp test tenv venv break
+    ExpTy _ bodyTy <- transExp body tenv venv True
     checkTy pos TInt testTy
     checkTy pos TUnit bodyTy
     return $ ExpTy EUnit bodyTy
 
   AST.ForExp (AST.ForExp' pos varSym _ lo hi body) -> do
-    ExpTy _ loTy <- transExp lo tenv venv
-    ExpTy _ hiTy <- transExp hi tenv venv
+    ExpTy _ loTy <- transExp lo tenv venv break
+    ExpTy _ hiTy <- transExp hi tenv venv break
     checkTy pos TInt loTy
     checkTy pos TInt hiTy
     let venv' = enter varSym (VarEntry TInt) venv
-    ExpTy _ bodyTy <- transExp body tenv venv'
+    ExpTy _ bodyTy <- transExp body tenv venv' True
     checkTy pos TUnit bodyTy
     return $ ExpTy EUnit bodyTy
 
@@ -152,22 +157,22 @@ transExp exp tenv venv = case exp of
     arrayTy <- lookTy pos tySym tenv >>= actualTy
     case arrayTy of
       TArray ty _ -> do
-        ExpTy _ sizeTy <- transExp size tenv venv
-        ExpTy _ initTy <- transExp init tenv venv
+        ExpTy _ sizeTy <- transExp size tenv venv break
+        ExpTy _ initTy <- transExp init tenv venv break
         checkTy pos TInt sizeTy
         checkTy pos ty initTy
         return $ ExpTy EUnit arrayTy
       _ -> throwM $ Err pos $ "type " ++ show tySym ++ " is not an array"
 
   AST.SeqExp exps -> foldlM
-    (\_ (_, exp) -> transExp exp tenv venv)
+    (\_ (_, exp) -> transExp exp tenv venv break)
     (ExpTy EUnit TNil)
     exps
 
   AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym venv of
     Just (FunEntry tys rt) -> do
       tys' <- fmap (fmap (\(ExpTy _ ty) -> ty))
-            . traverse (\exp -> transExp exp tenv venv)
+            . traverse (\exp -> transExp exp tenv venv break)
             $ args
       if tys == tys'
         then ExpTy EUnit <$> actualTy rt
@@ -177,13 +182,13 @@ transExp exp tenv venv = case exp of
 
   AST.LetExp (AST.LetExp' _ decs body) -> do
     (tenv', venv') <- foldlM
-      (\(!tenv, !venv) dec -> transDec dec tenv venv)
+      (\(!tenv, !venv) dec -> transDec dec tenv venv break)
       (tenv, venv) decs
-    transExp body tenv' venv'
+    transExp body tenv' venv' break
 
   AST.OpExp left op right pos -> do
-    ExpTy _ tyleft <- transExp left tenv venv
-    ExpTy _ tyright <- transExp right tenv venv
+    ExpTy _ tyleft <- transExp left tenv venv break
+    ExpTy _ tyright <- transExp right tenv venv break
     let opType = opTypeFromOp op
         check  = if checkOpType opType tyleft
           then checkTy pos tyleft tyright
@@ -192,7 +197,7 @@ transExp exp tenv venv = case exp of
     ExpTy EUnit TInt <$ check
  where
   trField venv (pos, symbol, exp) = (\(ExpTy _ ty) -> (pos, symbol, ty))
-                                <$> transExp exp tenv venv
+                                <$> transExp exp tenv venv break
 matchTys :: (MonadIO m, MonadThrow m)
          => Pos
          -> [(Symbol, Ty)]
@@ -212,15 +217,15 @@ matchTys pos l1 l2
   append map (sym, ty) = IM.insert (symbolValue sym) ty map
 
 transDec :: (MonadIO m, MonadThrow m)
-         => AST.Dec -> TEnv -> VEnv -> m (TEnv, VEnv)
-transDec dec tenv venv = case dec of
+         => AST.Dec -> TEnv -> VEnv -> Bool -> m (TEnv, VEnv)
+transDec dec tenv venv break = case dec of
   AST.VarDec (AST.VarDec' _ name Nothing init _) -> do
-    ExpTy _ ty <- transExp init tenv venv
+    ExpTy _ ty <- transExp init tenv venv break
     return (tenv, enter name (VarEntry ty) venv)
 
   AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init _) -> do
     ty <- lookTy pos' tySym tenv
-    ExpTy _ ty' <- transExp init tenv venv
+    ExpTy _ ty' <- transExp init tenv venv break
     checkTy pos ty ty'
     return (tenv, enter name (VarEntry ty) venv)
 
@@ -280,7 +285,7 @@ transDec dec tenv venv = case dec of
         venv'
         params
       rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty tenv) rt
-      ExpTy _ ty <- transExp body tenv venv''
+      ExpTy _ ty <- transExp body tenv venv'' break
       checkTy pos rty ty
     return (tenv, venv')
  where
@@ -313,11 +318,12 @@ transTy (AST.ArrayTy sym pos) tenv =
 testTy :: String -> IO ExpTy
 testTy text = runMyParserT ((,) <$> mkEnvs <*> parseExpr) text >>= \case
   Left err                  -> throwM err
-  Right ((tenv, venv), exp) -> transExp exp tenv venv
+  Right ((tenv, venv), exp) -> transExp exp tenv venv False
 
 testTySyms :: String -> IO (HM.HashMap String Int, ExpTy)
 testTySyms text = runMyParserT m text >>= \case
   Left err                           -> throwM err
-  Right ((tenv, venv), exp, symbols) -> (symbols ,) <$> transExp exp tenv venv
+  Right ((tenv, venv), exp, symbols) ->
+    (symbols ,) <$> transExp exp tenv venv False
  where
   m = (,,) <$> mkEnvs <*> parseExpr <*> getSymbols
