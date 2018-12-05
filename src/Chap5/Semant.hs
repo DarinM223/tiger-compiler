@@ -1,17 +1,18 @@
 module Chap5.Semant where
 
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Chap2.Lexer (runMyParserT)
 import Chap3.Parser (parseExpr)
-import Chap5.Symbol (Pos, Symbol, fromSymbol, getSymbols, symbolValue)
+import Chap5.Symbol (Pos, Symbol (Symbol), fromSymbol, getSymbols, symbolValue)
 import Chap5.Table
 import Data.IORef
 import Data.Maybe (fromMaybe)
 import Data.Foldable (foldlM, foldl')
 import qualified Chap3.AST as AST
 import qualified Data.IntMap as IM
+import qualified Data.IntSet as IS
 import qualified Data.HashMap.Strict as HM
 
 data Exp = EUnit deriving (Show, Eq)
@@ -58,6 +59,13 @@ checkTy pos ty ty' = do
   when (cty /= cty') $
     throwM $ Err pos $ "type mismatch: expected: "
                     ++ show ty ++ " got: " ++ show ty'
+
+checkDup :: (MonadIO m, MonadThrow m) => [(Symbol, Pos)] -> m ()
+checkDup = void . foldlM go IS.empty
+ where
+  go set (Symbol (name, id), pos)
+    | IS.member id set = throwM $ Err pos $ "Duplicate symbol: " ++ name
+    | otherwise        = return $ IS.insert id set
 
 lookTy :: (MonadThrow m) => Pos -> Symbol -> TEnv -> m Ty
 lookTy pos tySym tenv = case look tySym tenv of
@@ -217,6 +225,7 @@ transDec dec tenv venv = case dec of
     return (tenv, enter name (VarEntry ty) venv)
 
   AST.TypeDec decs -> do
+    checkDup $ fmap (\(AST.TypeDec' pos name _) -> (name, pos)) decs
     -- First pass: for each declaration, add a TName with the left side symbol.
     --
     -- Example:
@@ -251,6 +260,7 @@ transDec dec tenv venv = case dec of
     return (tenv', venv)
 
   AST.FunctionDec decs -> do
+    checkDup $ fmap (\(AST.FunDec pos name _ _ _) -> (name, pos)) decs
     -- First pass: gather the headers of all the functions
     -- (function name, function parameter types, function return type)
     venv' <- foldlM
@@ -283,16 +293,18 @@ transDec dec tenv venv = case dec of
           Just (TName sym _) -> go (name:seen) sym
           _                  -> return ()
         _ -> return ()
-  funHeader tenv fields rt = FunEntry
-    <$> traverse (\(AST.Field pos _ ty _) -> lookTy pos ty tenv) fields
-    <*> maybe (pure TUnit) (\(pos, ty) -> lookTy pos ty tenv) rt
+  funHeader tenv fields rt = do
+    checkDup $ fmap (\(AST.Field pos name _ _) -> (name, pos)) fields
+    FunEntry
+      <$> traverse (\(AST.Field pos _ ty _) -> lookTy pos ty tenv) fields
+      <*> maybe (pure TUnit) (\(pos, ty) -> lookTy pos ty tenv) rt
 
 transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
 transTy (AST.NameTy sym pos) tenv  = lookTy pos sym tenv
-transTy (AST.RecordTy fields) tenv =
+transTy (AST.RecordTy fields) tenv = do
+  checkDup $ fmap (\(AST.Field pos name _ _) -> (name, pos)) fields
   TRecord <$> trFields fields tenv <*> mkUnique
  where
-  -- TODO(DarinM223): check for duplicate fields in record
   trFields fields tenv = traverse (trField tenv) fields
   trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
 transTy (AST.ArrayTy sym pos) tenv =

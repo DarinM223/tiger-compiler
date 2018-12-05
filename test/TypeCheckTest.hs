@@ -69,6 +69,7 @@ testRecord = testTable tests expected
     , (False, "let type rec = { c: int, d: string } in rec { d = \"hello\", c = 1 } end")
     , (False, "let type rec = { c: int } in rec { } end")
     , (False, "let type rec = { } in rec { } end")
+    , (False, "let type rec = { a: int, a: string } in flush() end")
     ]
   expected =
     [ \t -> Just $ ExpTy EUnit $
@@ -79,6 +80,7 @@ testRecord = testTable tests expected
       TRecord [(look "c" t, TInt), (look "d" t, TString)] UniqueIgnore
     , const Nothing
     , const $ Just $ ExpTy EUnit $ TRecord [] UniqueIgnore
+    , const Nothing
     ]
 
 testIfElse :: IO ()
@@ -221,14 +223,24 @@ testRec = testTable tests expected
   tests =
     [ (False, "let type a = b\ntype b = c\ntype c = int\nvar a : a := 2 in a end")
     , (False, "let type a = b\ntype b = c\ntype c = a\nvar a : a := 2 in a end")
+    , (False, "let type a = { next : a } in flush() end")
+    , (False, "let type a = array of a in flush() end")
+    , (False, "let type a = int\ntype a = int in flush() end")
     , (False, "let function add(a : int, b : int) : int = add(a - 1, b - 1) in add(1, 2) end")
     , (False, "let function a(i:int):int = b(i)\nfunction b(i:int):int = a(i) in a(1) end")
     , (False, "let function a(i:int):int = b(i)\nfunction b(i:int):string = \"a\" in a(1) end")
+    , (False, "let function a(i:int):int = 2\nfunction a(i:string):int = 2 in flush() end")
+    , (False, "let function a(i:int, i:string):int = 2 in flush() end")
     ]
   expected =
     [ const $ Just $ ExpTy EUnit TInt
     , const Nothing
+    , const $ Just $ ExpTy EUnit TUnit
+    , const $ Just $ ExpTy EUnit TUnit
+    , const Nothing
     , const $ Just $ ExpTy EUnit TInt
     , const $ Just $ ExpTy EUnit TInt
+    , const Nothing
+    , const Nothing
     , const Nothing
     ]
