@@ -5,10 +5,10 @@ module ParserTest (tests) where
 import Chap2.Lexer
 import Chap3.AST
 import Chap3.Parser
-import Data.Either
 import NeatInterpolation
 import Test.Tasty
 import Test.Tasty.HUnit
+import Text.Megaparsec
 import qualified Data.Text as T
 
 tests :: TestTree
@@ -20,11 +20,9 @@ tests = testGroup "Parser tests"
   ]
 
 testExp :: IO (Either ParseErr Exp) -> Bool -> IO ()
-testExp m False = m >>= \exp -> isRight exp @? "Error parsing: " ++ show exp
-testExp m True  = do
-  exp <- m
-  isRight exp @? "Error parsing: " ++ show exp
-  print exp
+testExp m debug = m >>= \case
+  Left e    -> assertFailure $ errorBundlePretty e
+  Right exp -> if debug then print exp else return ()
 
 testParseCall :: IO (Either ParseErr Exp)
 testParseCall = runMyParserT

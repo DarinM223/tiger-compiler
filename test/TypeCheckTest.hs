@@ -53,7 +53,7 @@ testTable tests expected = do
   justTuple debug (a, b) = (debug, a, Just b)
   runTest (debug, test) = catch (justTuple debug <$> testTySyms test) $
     \(e :: SomeException) -> do
-      when debug $ print e
+      when debug $ putStrLn $ displayException e
       return (debug, HM.empty, Nothing)
 
 -- | Looks up a symbol from the table.
