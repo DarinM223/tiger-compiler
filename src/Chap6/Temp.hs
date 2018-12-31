@@ -29,24 +29,29 @@ mkTempRef = liftIO $ TempRef <$> newIORef TempData
 
 newtype DeriveTemp m a = DeriveTemp (m a)
 instance
-  ( HasTempRef r
-  , HasSymbolRef r
-  , HasSymbolTable r
-  , MonadReader r m
-  , MonadIO m ) =>
+  ( HasTempRef r, HasSymbolRef r, HasSymbolTable r
+  , MonadReader r m, MonadIO m ) =>
   MonadTemp (DeriveTemp m) where
 
-  newTemp = DeriveTemp $ do
-    TempRef ref <- asks getTempRef
-    liftIO $ do
-      tempData <- readIORef ref
-      writeIORef ref tempData { _temp = _temp tempData + 1 }
-      return $ _temp tempData
-  newLabel = DeriveTemp $ do
-    TempRef ref <- asks getTempRef
-    l <- liftIO $ do
-      tempData <- readIORef ref
-      writeIORef ref tempData { _label = _label tempData + 1 }
-      return $ _label tempData
-    toSymbol $ "L" ++ show l
+  newTemp = DeriveTemp newTemp'
+  newLabel = DeriveTemp newLabel'
   namedLabel = DeriveTemp . toSymbol
+
+newTemp' :: (HasTempRef r, MonadReader r m, MonadIO m) => m Temp
+newTemp' = do
+  TempRef ref <- asks getTempRef
+  liftIO $ do
+    tempData <- readIORef ref
+    writeIORef ref tempData { _temp = _temp tempData + 1 }
+    return $ _temp tempData
+
+newLabel' :: ( HasTempRef r, HasSymbolRef r, HasSymbolTable r
+             , MonadReader r m, MonadIO m )
+          => m Label
+newLabel' = do
+  TempRef ref <- asks getTempRef
+  l <- liftIO $ do
+    tempData <- readIORef ref
+    writeIORef ref tempData { _label = _label tempData + 1 }
+    return $ _label tempData
+  toSymbol $ "L" ++ show l
