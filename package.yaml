@@ -30,6 +30,7 @@ dependencies:
 - neat-interpolation
 - parser-combinators
 - text
+- vector
 - unordered-containers
 
 default-extensions:
