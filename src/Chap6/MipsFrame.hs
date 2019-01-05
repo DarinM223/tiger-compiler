@@ -1,11 +1,9 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Chap6.MipsFrame where
 
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap6.Frame
-import Chap6.Temp (HasTempRef, MonadTemp)
+import Chap6.Temp (HasTempRef, TempM (..))
 import Data.Foldable
 import Data.IORef
 import GHC.Records
@@ -52,23 +50,19 @@ mkMipsData = MipsData
   <*> Temp.newTemp'
   <*> Temp.newTemp'
 
-instance FrameOps Access Frame where
-  name = _name
-  formals = _formals
-
-newtype DeriveFrame m a = DeriveFrame (m a)
-  deriving (Functor, Applicative, Monad)
-instance (MonadTemp m, MonadReader r m, MonadThrow m, MonadIO m) =>
-  MonadFrame Access Frame (DeriveFrame m) where
-
-  newFrame = DeriveFrame . newFrame'
-  allocLocalFrame f b = DeriveFrame $ allocLocalFrame' f b
+frameMIO :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame m
+frameMIO tempM = FrameM
+  { newFrame        = newFrame' tempM
+  , allocLocalFrame = allocLocalFrame' tempM
+  , name            = getField @"_name"
+  , formals         = getField @"_formals"
+  }
 
 wordSize :: Int
 wordSize = 4
 
-newFrame' :: (MonadIO m, MonadThrow m, MonadTemp m) => Init -> m Frame
-newFrame' init
+newFrame' :: (MonadIO m, MonadThrow m) => TempM m -> Init -> m Frame
+newFrame' tempM init
   | formalsLen > 4 = throwM $ TooManyArgs formalsLen
   | otherwise      = Frame
     <$> pure (getField @"_name" init)
@@ -82,15 +76,15 @@ newFrame' init
   allocFormal escapes (formals, offset)
     | escapes   = return (InFrame offset:formals, offset + wordSize)
     | otherwise = do
-      access <- InRegister . Temp.unTemp <$> Temp.newTemp
+      access <- InRegister . Temp.unTemp <$> newTemp tempM
       return (access:formals, offset)
 
-allocLocalFrame' :: (MonadIO m, MonadTemp m) => Frame -> Bool -> m Access
-allocLocalFrame' frame escapes
+allocLocalFrame' :: MonadIO m => TempM m -> Frame -> Bool -> m Access
+allocLocalFrame' tempM frame escapes
   | escapes = do
     locals <- liftIO $ readIORef (_locals frame)
     let locals' = locals + 1
         offset  = locals' * (-wordSize)
     liftIO $ writeIORef (_locals frame) locals'
     return $ InFrame offset
-  | otherwise = InRegister . Temp.unTemp <$> Temp.newTemp
+  | otherwise = InRegister . Temp.unTemp <$> newTemp tempM

@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Chap6.Temp where
 
 import Chap5.Symbol
@@ -11,10 +9,11 @@ instance Show Temp where
   show (Temp t) = "t" ++ show t
 type Label = Symbol
 
-class MonadTemp m where
-  newTemp    :: m Temp
-  newLabel   :: m Label
-  namedLabel :: String -> m Label
+data TempM m = TempM
+  { newTemp    :: m Temp
+  , newLabel   :: m Label
+  , namedLabel :: String -> m Label
+  }
 
 data TempData = TempData
   { _temp  :: Temp
@@ -27,15 +26,14 @@ mkTempRef :: (MonadIO m) => m TempRef
 mkTempRef = liftIO $ TempRef <$> newIORef TempData
   { _temp = 100, _label = 0 }
 
-newtype DeriveTemp m a = DeriveTemp (m a)
-instance
-  ( HasTempRef r, HasSymbolRef r, HasSymbolTable r
-  , MonadReader r m, MonadIO m ) =>
-  MonadTemp (DeriveTemp m) where
-
-  newTemp = DeriveTemp newTemp'
-  newLabel = DeriveTemp newLabel'
-  namedLabel = DeriveTemp . toSymbol
+tempMIO :: ( HasTempRef r, HasSymbolRef r, HasSymbolTable r
+           , MonadReader r m, MonadIO m )
+        => TempM m
+tempMIO = TempM
+  { newTemp    = newTemp'
+  , newLabel   = newLabel'
+  , namedLabel = toSymbol
+  }
 
 newTemp' :: (HasTempRef r, MonadReader r m, MonadIO m) => m Temp
 newTemp' = do
