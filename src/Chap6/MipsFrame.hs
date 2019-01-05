@@ -2,10 +2,18 @@
 
 module Chap6.MipsFrame where
 
+import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap6.Frame
+import Chap6.Temp (HasTempRef, MonadTemp)
+import Data.Foldable
+import Data.IORef
+import GHC.Records
 import qualified Data.Vector as V
 import qualified Chap6.Temp as Temp
+
+data FrameException = TooManyArgs Int deriving (Show)
+instance Exception FrameException
 
 data Access = InFrame Int | InRegister Int
   deriving (Show, Eq)
@@ -13,8 +21,8 @@ data Access = InFrame Int | InRegister Int
 data Frame = Frame
   { _name    :: Temp.Label
   , _formals :: [Access]
-  , _locals  :: [Access]
-  } deriving (Show, Eq)
+  , _locals  :: IORef Int
+  }
 
 data MipsData = MipsData
   { _v    :: V.Vector Temp.Temp
@@ -30,7 +38,7 @@ data MipsData = MipsData
   }
 class HasMipsData r where getMipsData :: r -> MipsData
 
-mkMipsData :: forall r m. (Temp.HasTempRef r, MonadReader r m, MonadIO m)
+mkMipsData :: forall r m. (HasTempRef r, MonadReader r m, MonadIO m)
            => m MipsData
 mkMipsData = MipsData
   <$> (V.fromList <$> replicateM 2 Temp.newTemp')
@@ -50,14 +58,39 @@ instance FrameOps Access Frame where
 
 newtype DeriveFrame m a = DeriveFrame (m a)
   deriving (Functor, Applicative, Monad)
-instance (HasMipsData r, MonadReader r m) =>
+instance (MonadTemp m, MonadReader r m, MonadThrow m, MonadIO m) =>
   MonadFrame Access Frame (DeriveFrame m) where
 
   newFrame = DeriveFrame . newFrame'
   allocLocalFrame f b = DeriveFrame $ allocLocalFrame' f b
 
-newFrame' :: Init -> m Frame
-newFrame' = undefined
+wordSize :: Int
+wordSize = 4
 
-allocLocalFrame' :: Frame -> Bool -> m Access
-allocLocalFrame' = undefined
+newFrame' :: (MonadIO m, MonadThrow m, MonadTemp m) => Init -> m Frame
+newFrame' init
+  | formalsLen > 4 = throwM $ TooManyArgs formalsLen
+  | otherwise      = Frame
+    <$> pure (getField @"_name" init)
+    <*> allocFormals
+    <*> liftIO (newIORef 0)
+ where
+  formalsLen = length $ getField @"_formals" init
+  allocFormals = fmap fst
+               . foldrM allocFormal ([], wordSize)
+               $ getField @"_formals" init
+  allocFormal escapes (formals, offset)
+    | escapes   = return (InFrame offset:formals, offset + wordSize)
+    | otherwise = do
+      access <- InRegister . Temp.unTemp <$> Temp.newTemp
+      return (access:formals, offset)
+
+allocLocalFrame' :: (MonadIO m, MonadTemp m) => Frame -> Bool -> m Access
+allocLocalFrame' frame escapes
+  | escapes = do
+    locals <- liftIO $ readIORef (_locals frame)
+    let locals' = locals + 1
+        offset  = locals' * (-wordSize)
+    liftIO $ writeIORef (_locals frame) locals'
+    return $ InFrame offset
+  | otherwise = InRegister . Temp.unTemp <$> Temp.newTemp

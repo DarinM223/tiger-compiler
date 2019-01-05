@@ -6,7 +6,7 @@ import Chap5.Symbol
 import Control.Monad.Reader
 import Data.IORef
 
-newtype Temp = Temp Int deriving (Eq, Num)
+newtype Temp = Temp { unTemp :: Int } deriving (Eq, Num)
 instance Show Temp where
   show (Temp t) = "t" ++ show t
 type Label = Symbol
