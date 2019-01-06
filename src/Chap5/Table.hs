@@ -2,6 +2,7 @@ module Chap5.Table where
 
 import Chap5.Symbol
 import Control.Monad.Reader
+import Data.Generics.Product.Typed
 import Data.IORef
 
 import qualified Data.IntMap as IM
@@ -56,7 +57,8 @@ data EnvEntry = VarEntry Ty | FunEntry [Ty] Ty
 type TEnv = Table Ty
 type VEnv = Table EnvEntry
 
-mkEnvs :: (MonadIO m, MonadReader r m, HasSymbolRef r, HasSymbolTable r)
+mkEnvs :: ( MonadIO m, MonadReader r m
+          , HasType SymbolRef r, HasType SymbolTable r )
        => m (TEnv, VEnv)
 mkEnvs = (,) <$> convertBase tenvBase <*> convertBase venvBase
  where

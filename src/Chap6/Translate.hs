@@ -1,10 +1,15 @@
 module Chap6.Translate where
 
+import Control.Monad.Reader
+import Chap5.Symbol
+import Chap6.Temp
 import Chap6.Frame (FrameM (..))
 import Chap6.Temp (TempM (..))
+import GHC.Generics
 import GHC.Records
 import qualified Chap6.Frame as Frame
 import qualified Chap6.Temp as Temp
+import qualified Chap6.MipsFrame as Mips
 
 data Init level = Init
   { _parent  :: level
@@ -62,3 +67,23 @@ allocLocalLevel' :: Functor m => FrameM access frame m
                  -> Level frame -> Bool -> m (Access frame access)
 allocLocalLevel' frameM level escapes =
   Access level <$> (allocLocalFrame frameM) (_frame level) escapes
+
+-- Temporary example for how to use these effectful records, delete later
+data Config = Config
+  { _symRef   :: SymbolRef
+  , _symTable :: SymbolTable
+  , _tempRef  :: TempRef
+  } deriving Generic
+
+type Foo = ReaderT Config IO
+
+foo :: IO ()
+foo = config >>= \c -> flip runReaderT c $ do
+  let tempM  = tempMIO
+      frameM = Mips.frameMIO tempM
+      transM = translateMIO tempM frameM
+  _ <- newTemp tempM
+  _ <- (newLevel transM) undefined
+  undefined
+ where
+  config = Config <$> mkSymbolRef <*> mkSymbolTable <*> mkTempRef

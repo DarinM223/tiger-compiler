@@ -3,8 +3,9 @@ module Chap6.MipsFrame where
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap6.Frame
-import Chap6.Temp (HasTempRef, TempM (..))
+import Chap6.Temp (TempRef, TempM (..))
 import Data.Foldable
+import Data.Generics.Product.Typed
 import Data.IORef
 import GHC.Records
 import qualified Data.Vector as V
@@ -36,7 +37,7 @@ data MipsData = MipsData
   }
 class HasMipsData r where getMipsData :: r -> MipsData
 
-mkMipsData :: forall r m. (HasTempRef r, MonadReader r m, MonadIO m)
+mkMipsData :: forall r m. (HasType TempRef r, MonadReader r m, MonadIO m)
            => m MipsData
 mkMipsData = MipsData
   <$> (V.fromList <$> replicateM 2 Temp.newTemp')

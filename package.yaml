@@ -24,7 +24,9 @@ dependencies:
 - array
 - containers
 - exceptions
+- generic-lens
 - hashtables
+- lens
 - megaparsec
 - mtl
 - neat-interpolation

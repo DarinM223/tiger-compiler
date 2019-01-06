@@ -2,6 +2,7 @@ module Chap6.Temp where
 
 import Chap5.Symbol
 import Control.Monad.Reader
+import Data.Generics.Product.Typed
 import Data.IORef
 
 newtype Temp = Temp { unTemp :: Int } deriving (Eq, Num)
@@ -20,13 +21,12 @@ data TempData = TempData
   , _label :: Int
   }
 newtype TempRef = TempRef (IORef TempData)
-class HasTempRef r where getTempRef :: r -> TempRef
 
 mkTempRef :: (MonadIO m) => m TempRef
 mkTempRef = liftIO $ TempRef <$> newIORef TempData
   { _temp = 100, _label = 0 }
 
-tempMIO :: ( HasTempRef r, HasSymbolRef r, HasSymbolTable r
+tempMIO :: ( HasType TempRef r, HasType SymbolRef r, HasType SymbolTable r
            , MonadReader r m, MonadIO m )
         => TempM m
 tempMIO = TempM
@@ -35,19 +35,19 @@ tempMIO = TempM
   , namedLabel = toSymbol
   }
 
-newTemp' :: (HasTempRef r, MonadReader r m, MonadIO m) => m Temp
+newTemp' :: (HasType TempRef r, MonadReader r m, MonadIO m) => m Temp
 newTemp' = do
-  TempRef ref <- asks getTempRef
+  TempRef ref <- asks $ getTyped @TempRef
   liftIO $ do
     tempData <- readIORef ref
     writeIORef ref tempData { _temp = _temp tempData + 1 }
     return $ _temp tempData
 
-newLabel' :: ( HasTempRef r, HasSymbolRef r, HasSymbolTable r
+newLabel' :: ( HasType TempRef r, HasType SymbolRef r, HasType SymbolTable r
              , MonadReader r m, MonadIO m )
           => m Label
 newLabel' = do
-  TempRef ref <- asks getTempRef
+  TempRef ref <- asks $ getTyped @TempRef
   l <- liftIO $ do
     tempData <- readIORef ref
     writeIORef ref tempData { _label = _label tempData + 1 }

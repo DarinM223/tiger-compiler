@@ -6,6 +6,7 @@ import Chap5.Symbol
 import Data.Maybe (fromJust)
 import Data.Char (chr, ord)
 import Data.Void
+import GHC.Generics
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
@@ -14,9 +15,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 data Config = Config
   { _symRef   :: SymbolRef
   , _symTable :: SymbolTable
-  }
-instance HasSymbolRef Config where getSymRef = _symRef
-instance HasSymbolTable Config where getSymTable = _symTable
+  } deriving Generic
 
 mkConfig :: IO Config
 mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable
