@@ -1,6 +1,7 @@
 module Chap5.Table where
 
 import Chap5.Symbol
+import Chap6.Translate
 import Control.Monad.Reader
 import Data.Generics.Product.Typed
 import Data.IORef
@@ -52,28 +53,33 @@ data Ty = TInt
         | TName Symbol TRef
         deriving (Show, Eq)
 
-data EnvEntry = VarEntry Ty | FunEntry [Ty] Ty
+data EnvEntry frame access = VarEntry (Access frame access) Ty
+                           | FunEntry (Level frame) Symbol [Ty] Ty
 
 type TEnv = Table Ty
-type VEnv = Table EnvEntry
+type VEnv frame access = Table (EnvEntry frame access)
 
 mkEnvs :: ( MonadIO m, MonadReader r m
           , HasType SymbolRef r, HasType SymbolTable r )
-       => m (TEnv, VEnv)
-mkEnvs = (,) <$> convertBase tenvBase <*> convertBase venvBase
+       => TransM frame access m -> m (TEnv, VEnv frame access)
+mkEnvs transM = (,) <$> convertBase tenvBase <*> (venvBase >>= convertBase)
  where
   tenvBase = [("int", TInt), ("string", TString)]
-  venvBase =
-    [ ("print", FunEntry [TString] TUnit)
-    , ("flush", FunEntry [] TUnit)
-    , ("getchar", FunEntry [] TString)
-    , ("ord", FunEntry [TString] TInt)
-    , ("chr", FunEntry [TInt] TString)
-    , ("size", FunEntry [TString] TInt)
-    , ("substring", FunEntry [TString, TInt, TInt] TString)
-    , ("not", FunEntry [TInt] TInt)
-    , ("exit", FunEntry [TInt] TUnit)
-    ]
+  venvBase = mapM toFunTuple fns
+  fns = [ ("print", [TString], TUnit)
+        , ("flush", [], TUnit)
+        , ("getchar", [], TString)
+        , ("ord", [TString], TInt)
+        , ("chr", [TInt], TString)
+        , ("size", [TString], TInt)
+        , ("substring", [TString, TInt, TInt], TString)
+        , ("not", [TInt], TInt)
+        , ("exit", [TInt], TUnit) ]
 
+  toFunTuple t@(name, _, _) = (name,) <$> toFunEntry t
+  toFunEntry (name, params, ret) = do
+    label <- toSymbol name
+    level <- newLevel transM $ Init Outermost label (False <$ params)
+    return $ FunEntry level label params ret
   convertBase = fmap (IM.fromList . fmap (\(sym, ty) -> (symbolValue sym, ty)))
               . mapM (\(s, ty) -> (, ty) <$> toSymbol s)

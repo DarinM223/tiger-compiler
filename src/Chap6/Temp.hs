@@ -22,7 +22,7 @@ data TempData = TempData
   }
 newtype TempRef = TempRef (IORef TempData)
 
-mkTempRef :: (MonadIO m) => m TempRef
+mkTempRef :: MonadIO m => m TempRef
 mkTempRef = liftIO $ TempRef <$> newIORef TempData
   { _temp = 100, _label = 0 }
 
