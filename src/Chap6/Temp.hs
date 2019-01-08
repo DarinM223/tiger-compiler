@@ -26,13 +26,13 @@ mkTempRef :: MonadIO m => m TempRef
 mkTempRef = liftIO $ TempRef <$> newIORef TempData
   { _temp = 100, _label = 0 }
 
-tempMIO :: ( HasType TempRef r, HasType SymbolRef r, HasType SymbolTable r
-           , MonadReader r m, MonadIO m )
-        => TempM m
-tempMIO = TempM
+tempMIO :: (HasType TempRef r, MonadReader r m, MonadIO m)
+        => SymbolM m
+        -> TempM m
+tempMIO symM = TempM
   { newTemp    = newTemp'
-  , newLabel   = newLabel'
-  , namedLabel = toSymbol
+  , newLabel   = newLabel' symM
+  , namedLabel = toSymbol symM
   }
 
 newTemp' :: (HasType TempRef r, MonadReader r m, MonadIO m) => m Temp
@@ -43,13 +43,13 @@ newTemp' = do
     writeIORef ref tempData { _temp = _temp tempData + 1 }
     return $ _temp tempData
 
-newLabel' :: ( HasType TempRef r, HasType SymbolRef r, HasType SymbolTable r
-             , MonadReader r m, MonadIO m )
-          => m Label
-newLabel' = do
+newLabel' :: (HasType TempRef r, MonadReader r m, MonadIO m)
+          => SymbolM m
+          -> m Label
+newLabel' symM = do
   TempRef ref <- asks $ getTyped @TempRef
   l <- liftIO $ do
     tempData <- readIORef ref
     writeIORef ref tempData { _label = _label tempData + 1 }
     return $ _label tempData
-  toSymbol $ "L" ++ show l
+  toSymbol symM $ "L" ++ show l

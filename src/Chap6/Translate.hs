@@ -1,5 +1,3 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-
 module Chap6.Translate where
 
 import Control.Monad.Catch
@@ -78,5 +76,6 @@ mipsTransM :: ( HasType TempRef r, HasType SymbolRef r, HasType SymbolTable r
            => TransM Mips.Frame Mips.Access m
 mipsTransM = translateMIO tempM frameM
  where
-  tempM = tempMIO
+  symM = symbolMIO
+  tempM = tempMIO symM
   frameM = Mips.frameMIO tempM
