@@ -60,7 +60,7 @@ transVar symM transM var level tenv venv break = case var of
  where trVar var = transVar symM transM var level tenv venv break
 
 -- | Trace through TName types to their underlying definitions.
-actualTy :: (MonadIO m) => Ty -> m Ty
+actualTy :: MonadIO m => Ty -> m Ty
 actualTy ty@(TName _ (TRef ref)) = liftIO (readIORef ref) >>= \case
   Just ty -> actualTy ty
   Nothing -> return ty
@@ -81,7 +81,7 @@ checkDup = void . foldlM go IS.empty
     | IS.member id set = throwM $ Err pos $ "Duplicate symbol: " ++ name
     | otherwise        = return $ IS.insert id set
 
-lookTy :: (MonadThrow m) => Pos -> Symbol -> TEnv -> m Ty
+lookTy :: MonadThrow m => Pos -> Symbol -> TEnv -> m Ty
 lookTy pos tySym tenv = case look tySym tenv of
   Just ty -> return ty
   _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
@@ -140,9 +140,7 @@ transExp symM transM exp level tenv venv break = case exp of
   AST.IfExp (AST.IfExp' pos test thenExp elseExp) -> do
     ExpTy _ testTy <- trExp test
     ExpTy _ thenTy <- trExp thenExp
-    elseTy <- traverse
-      (fmap (\(ExpTy _ ty) -> ty) . trExp)
-      elseExp
+    elseTy <- traverse (fmap (\(ExpTy _ ty) -> ty) . trExp) elseExp
     checkTy pos TInt testTy
     checkTy pos (fromMaybe TUnit elseTy) thenTy
     return $ ExpTy EUnit thenTy
@@ -159,17 +157,16 @@ transExp symM transM exp level tenv venv break = case exp of
     let ivar     = AST.SimpleVar varSym pos
         limitvar = AST.SimpleVar limitSym pos
     limitEscRef <- AST.mkEscape
+    -- FIXME(DarinM223): wraps body in if block to check that type is TUnit.
     let decs =
           [ AST.VarDec $ AST.VarDec' pos varSym Nothing lo escRef
           , AST.VarDec $ AST.VarDec' pos limitSym Nothing hi limitEscRef
           ]
-        test = AST.OpExp (AST.VarExp ivar) AST.LeOp (AST.VarExp limitvar) pos
-        incr = AST.OpExp (AST.VarExp ivar) AST.PlusOp (AST.IntExp 1) pos
-        body' = AST.SeqExp
-          [ (pos, body)
-          , (pos, AST.AssignExp pos ivar incr)
-          ]
-        loop = AST.WhileExp $ AST.WhileExp' pos test body'
+        test   = AST.OpExp (AST.VarExp ivar) AST.LeOp (AST.VarExp limitvar) pos
+        incr   = AST.OpExp (AST.VarExp ivar) AST.PlusOp (AST.IntExp 1) pos
+        body'  = AST.IfExp $ AST.IfExp' pos (AST.IntExp 1) body Nothing
+        body'' = AST.SeqExp [(pos, body'), (pos, AST.AssignExp pos ivar incr)]
+        loop   = AST.WhileExp $ AST.WhileExp' pos test body''
     trExp $ AST.LetExp $ AST.LetExp' pos decs loop
 
   AST.RecordExp (AST.RecordExp' pos tySym fields) -> do
@@ -222,8 +219,7 @@ transExp symM transM exp level tenv venv break = case exp of
   transExp' = transExp symM transM
   trExp exp = transExp symM transM exp level tenv venv break
   trVar var = transVar symM transM var level tenv venv break
-  trField (pos, symbol, exp) = (\(ExpTy _ ty) -> (pos, symbol, ty))
-                           <$> trExp exp
+  trField (pos, sym, exp) = (\(ExpTy _ ty) -> (pos, sym, ty)) <$> trExp exp
 
 matchTys :: (MonadIO m, MonadThrow m)
          => Pos

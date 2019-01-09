@@ -58,7 +58,7 @@ newLevel' :: Monad m => TempM m -> FrameM access frame m
           -> Init (Level frame) -> m (Level frame)
 newLevel' tempM frameM init = do
   label <- newLabel tempM
-  frame <- newFrame frameM (Frame.Init label (getField @"_formals" init))
+  frame <- newFrame frameM (Frame.Init label (True:getField @"_formals" init))
   return Level
     { _parent  = getField @"_parent" init
     , _name    = getField @"_name" init
