@@ -3,6 +3,7 @@ module Chap2.Lexer where
 import Control.Monad (void)
 import Control.Monad.Reader
 import Chap5.Symbol
+import Chap6.Temp
 import Data.Maybe (fromJust)
 import Data.Char (chr, ord)
 import Data.Void
@@ -15,10 +16,11 @@ import qualified Text.Megaparsec.Char.Lexer as L
 data Config = Config
   { _symRef   :: SymbolRef
   , _symTable :: SymbolTable
+  , _tempRef  :: TempRef
   } deriving Generic
 
 mkConfig :: IO Config
-mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable
+mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable <*> mkTempRef
 
 type Parser = ParsecT Void String (ReaderT Config IO)
 type ParseErr = ParseErrorBundle String Void
@@ -32,7 +34,7 @@ runMyParserT m s = do
 
 sc :: Parser ()
 sc = L.space (space1 <|> void tab) empty blockCmnt
-  where blockCmnt = L.skipBlockCommentNested "/*" "*/"
+ where blockCmnt = L.skipBlockCommentNested "/*" "*/"
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
@@ -76,9 +78,9 @@ string'' = char '"' *> many character <* char '"'
           <|> fmap (fromJust . toEscChar) (oneOf singleEscChars)
           <|> (many spaceChar *> char '\\' *> character)
           <?> "Invalid escape sequence"
-  ctrlChar = fmap (chr . (subtract (ord '@')) . ord) asciiChar
+  ctrlChar = fmap (chr . subtract (ord '@') . ord) asciiChar
   check n
-    | n > 255 || n < 0 = fail $ "Number outside of valid range"
+    | n > 255 || n < 0 = fail "Number outside of valid range"
     | otherwise        = return $ chr n
 
 toEscChar :: Char -> Maybe Char

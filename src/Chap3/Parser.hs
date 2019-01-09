@@ -211,7 +211,7 @@ annot :: Parser (Pos, Symbol)
 annot = (,) <$> getSourcePos <*> (symbol ":" *> ident)
 
 ident :: Parser Symbol
-ident = identifier >>= toSymbol
+ident = identifier >>= toSymbol'
 
 parseExpr :: Parser Exp
 parseExpr = sc *> expr <* eof

@@ -3,9 +3,8 @@ module Chap6.MipsFrame where
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap6.Frame
-import Chap6.Temp (TempRef, TempM (..))
+import Chap6.Temp (TempM (..))
 import Data.Foldable
-import Data.Generics.Product.Typed
 import Data.IORef
 import GHC.Records
 import qualified Data.Vector as V
@@ -35,21 +34,19 @@ data MipsData = MipsData
   , _ra   :: Temp.Temp
   , _rv   :: Temp.Temp
   }
-class HasMipsData r where getMipsData :: r -> MipsData
 
-mkMipsData :: forall r m. (HasType TempRef r, MonadReader r m, MonadIO m)
-           => m MipsData
-mkMipsData = MipsData
-  <$> (V.fromList <$> replicateM 2 Temp.newTemp')
-  <*> (V.fromList <$> replicateM 4 Temp.newTemp')
-  <*> (V.fromList <$> replicateM 10 Temp.newTemp')
-  <*> (V.fromList <$> replicateM 8 Temp.newTemp')
-  <*> Temp.newTemp'
-  <*> Temp.newTemp'
-  <*> Temp.newTemp'
-  <*> Temp.newTemp'
-  <*> Temp.newTemp'
-  <*> Temp.newTemp'
+mkMipsData :: MonadIO m => TempM m -> m MipsData
+mkMipsData tempM = MipsData
+  <$> (V.fromList <$> replicateM 2 (newTemp tempM))
+  <*> (V.fromList <$> replicateM 4 (newTemp tempM))
+  <*> (V.fromList <$> replicateM 10 (newTemp tempM))
+  <*> (V.fromList <$> replicateM 8 (newTemp tempM))
+  <*> newTemp tempM
+  <*> newTemp tempM
+  <*> newTemp tempM
+  <*> newTemp tempM
+  <*> newTemp tempM
+  <*> newTemp tempM
 
 frameMIO :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame m
 frameMIO tempM = FrameM

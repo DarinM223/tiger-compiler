@@ -1,14 +1,18 @@
 module Chap3.AST where
 
 import Chap5.Symbol
+import Control.Monad.IO.Class
 import Data.IORef
 
 newtype Escape = Escape { unEscape :: IORef Bool }
 instance Show Escape where
     show _ = ""
 
-mkEscape :: IO Escape
-mkEscape = Escape <$> newIORef False
+mkEscape :: MonadIO m => m Escape
+mkEscape = Escape <$> liftIO (newIORef False)
+
+readEscape :: MonadIO m => Escape -> m Bool
+readEscape (Escape ref) = liftIO $ readIORef ref
 
 data Var = SimpleVar Symbol Pos
          | FieldVar Var Symbol Pos
