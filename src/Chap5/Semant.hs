@@ -6,9 +6,9 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap2.Lexer (Config, mkConfig)
 import Chap3.Parser (parseExpr)
-import Chap5.Symbol (Pos, Symbol (Symbol), SymbolM (..), fromSymbol, symbolMIO, symbolValue)
+import Chap5.Symbol (Pos, Symbol (Symbol), SymbolM (..), fromSymbol, mkSymbolM, symbolValue)
 import Chap5.Table
-import Chap6.Temp (tempMIO, TempM (namedLabel))
+import Chap6.Temp (mkTempM, TempM (namedLabel))
 import Chap6.Translate
 import Data.IORef
 import Data.Maybe (fromMaybe)
@@ -357,15 +357,20 @@ transTy (AST.RecordTy fields) tenv = do
 transTy (AST.ArrayTy sym pos) tenv = TArray <$> lookTy pos sym tenv <*> mkUnique
 
 runExp :: Config -> TEnv -> VEnv Mips.Frame Mips.Access -> AST.Exp -> IO ExpTy
-runExp config tenv venv exp = flip runReaderT config $ do
-  mainName <- namedLabel (tempMIO symbolMIO) "main"
-  mainLevel <- newLevel mipsTransM (Init Outermost mainName [])
-  transExp symbolMIO mipsTransM exp mainLevel tenv venv False
+runExp config tenv venv exp = do
+  let symbolM = mkSymbolM config
+      tempM   = mkTempM symbolM config
+      transM  = mkMipsM config
+  mainName <- namedLabel tempM "main"
+  mainLevel <- newLevel transM (Init Outermost mainName [])
+  transExp symbolM transM exp mainLevel tenv venv False
 
 testTy :: String -> IO ExpTy
 testTy text = do
   config <- mkConfig
-  (tenv, venv) <- runReaderT (mkEnvs symbolMIO mipsTransM) config
+  let symbolM = mkSymbolM config
+      transM  = mkMipsM config
+  (tenv, venv) <- mkEnvs symbolM transM
   runReaderT (runParserT parseExpr "" text) config >>= \case
     Left err  -> throwM err
     Right exp -> runExp config tenv venv exp
@@ -373,8 +378,10 @@ testTy text = do
 testTySyms :: String -> IO (HM.HashMap String Int, ExpTy)
 testTySyms text = do
   config <- mkConfig
-  (tenv, venv) <- runReaderT (mkEnvs symbolMIO mipsTransM) config
-  runReaderT (runParserT parse "" text) config >>= \case
+  let symbolM = mkSymbolM config
+      transM  = mkMipsM config
+  (tenv, venv) <- mkEnvs symbolM transM
+  runReaderT (runParserT (parse config) "" text) config >>= \case
     Left err             -> throwM err
     Right (exp, symbols) -> (symbols ,) <$> runExp config tenv venv exp
- where parse = (,) <$> parseExpr <*> getSymbols symbolMIO
+ where parse config = (,) <$> parseExpr <*> getSymbols (mkSymbolM config)

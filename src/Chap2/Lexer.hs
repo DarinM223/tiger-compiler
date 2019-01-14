@@ -7,7 +7,6 @@ import Chap6.Temp
 import Data.Maybe (fromJust)
 import Data.Char (chr, ord)
 import Data.Void
-import GHC.Generics
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
@@ -17,7 +16,14 @@ data Config = Config
   { _symRef   :: SymbolRef
   , _symTable :: SymbolTable
   , _tempRef  :: TempRef
-  } deriving Generic
+  }
+
+instance HasSymbolRef Config where
+  getSymbolRef = _symRef
+instance HasSymbolTable Config where
+  getSymbolTable = _symTable
+instance HasTempRef Config where
+  getTempRef = _tempRef
 
 mkConfig :: IO Config
 mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable <*> mkTempRef

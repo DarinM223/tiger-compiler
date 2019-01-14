@@ -13,3 +13,5 @@ data FrameM access frame m = FrameM
   , name            :: frame -> Temp.Label
   , formals         :: frame -> [access]
   }
+class HasFrameM access frame m effs | effs -> access frame m where
+  getFrameM :: effs -> FrameM access frame m

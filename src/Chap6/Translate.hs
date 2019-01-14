@@ -6,7 +6,6 @@ import Chap5.Symbol
 import Chap6.Temp
 import Chap6.Frame (FrameM (..))
 import Chap6.Temp (TempM (..))
-import Data.Generics.Product.Typed
 import GHC.Records
 import qualified Chap6.Frame as Frame
 import qualified Chap6.Temp as Temp
@@ -26,6 +25,8 @@ data TranslateM level access m = TranslateM
   , outermost     :: level
   , levelFormals  :: level -> [access]
   }
+class HasTranslateM level access m effs | effs -> level access m where
+  getTranslateM :: effs -> TranslateM level access m
 
 data Level frame = Level
   { _parent  :: Level frame
@@ -41,9 +42,9 @@ data Access frame access = Access
 
 type TransM frame access m = TranslateM (Level frame) (Access frame access) m
 
-translateMIO :: Monad m => TempM m -> FrameM access frame m
+mkTranslateM :: Monad m => TempM m -> FrameM access frame m
              -> TranslateM (Level frame) (Access frame access) m
-translateMIO tempM frameM = TranslateM
+mkTranslateM tempM frameM = TranslateM
   { newLevel     = newLevel' tempM frameM
   , allocLocal   = allocLocal' frameM
   , outermost    = Outermost
@@ -71,11 +72,11 @@ allocLocal' :: Functor m => FrameM access frame m
 allocLocal' frameM level escapes =
   Access level <$> (allocLocalFrame frameM) (_frame level) escapes
 
-mipsTransM :: ( HasType TempRef r, HasType SymbolRef r, HasType SymbolTable r
-              , MonadReader r m, MonadThrow m, MonadIO m )
-           => TransM Mips.Frame Mips.Access m
-mipsTransM = translateMIO tempM frameM
+mkMipsM :: ( HasTempRef cfg, HasSymbolRef cfg, HasSymbolTable cfg
+           , MonadThrow m, MonadIO m )
+        => cfg -> TransM Mips.Frame Mips.Access m
+mkMipsM cfg = mkTranslateM tempM frameM
  where
-  symM = symbolMIO
-  tempM = tempMIO symM
-  frameM = Mips.frameMIO tempM
+  symM = mkSymbolM cfg
+  tempM = mkTempM symM cfg
+  frameM = Mips.mkFrameM tempM

@@ -3,8 +3,8 @@ module Chap3.Parser where
 import Chap2.Lexer
 import Chap3.AST
 import Chap5.Symbol
-import Control.Monad.IO.Class
 import Control.Monad.Combinators.Expr
+import Control.Monad.Reader
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char
 
@@ -211,7 +211,9 @@ annot :: Parser (Pos, Symbol)
 annot = (,) <$> getSourcePos <*> (symbol ":" *> ident)
 
 ident :: Parser Symbol
-ident = identifier >>= toSymbol'
+ident = do
+  config <- lift ask
+  identifier >>= toSymbol' config
 
 parseExpr :: Parser Exp
 parseExpr = sc *> expr <* eof

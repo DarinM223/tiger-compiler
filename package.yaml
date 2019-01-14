@@ -24,7 +24,6 @@ dependencies:
 - array
 - containers
 - exceptions
-- generic-lens
 - hashtables
 - lens
 - megaparsec

@@ -2,7 +2,6 @@ module Chap6.Temp where
 
 import Chap5.Symbol
 import Control.Monad.Reader
-import Data.Generics.Product.Typed
 import Data.IORef
 
 newtype Temp = Temp { unTemp :: Int } deriving (Eq, Num)
@@ -15,41 +14,41 @@ data TempM m = TempM
   , newLabel   :: m Label
   , namedLabel :: String -> m Label
   }
+class HasTempM m effs | effs -> m where
+  getTempM :: effs -> TempM m
 
 data TempData = TempData
   { _temp  :: Temp
   , _label :: Int
   }
+
 newtype TempRef = TempRef (IORef TempData)
+class HasTempRef cfg where
+  getTempRef :: cfg -> TempRef
 
 mkTempRef :: MonadIO m => m TempRef
 mkTempRef = liftIO $ TempRef <$> newIORef TempData
   { _temp = 100, _label = 0 }
 
-tempMIO :: (HasType TempRef r, MonadReader r m, MonadIO m)
-        => SymbolM m
-        -> TempM m
-tempMIO symM = TempM
-  { newTemp    = newTemp'
-  , newLabel   = newLabel' symM
+mkTempM :: (HasTempRef cfg, MonadIO m) => SymbolM m -> cfg -> TempM m
+mkTempM symM cfg = TempM
+  { newTemp    = newTemp' cfg
+  , newLabel   = newLabel' symM cfg
   , namedLabel = toSymbol symM
   }
 
-newTemp' :: (HasType TempRef r, MonadReader r m, MonadIO m) => m Temp
-newTemp' = do
-  TempRef ref <- asks $ getTyped @TempRef
-  liftIO $ do
-    tempData <- readIORef ref
-    writeIORef ref tempData { _temp = _temp tempData + 1 }
-    return $ _temp tempData
+newTemp' :: (HasTempRef cfg, MonadIO m) => cfg -> m Temp
+newTemp' cfg = liftIO $ do
+  tempData <- readIORef ref
+  writeIORef ref tempData { _temp = _temp tempData + 1 }
+  return $ _temp tempData
+ where TempRef ref = getTempRef cfg
 
-newLabel' :: (HasType TempRef r, MonadReader r m, MonadIO m)
-          => SymbolM m
-          -> m Label
-newLabel' symM = do
-  TempRef ref <- asks $ getTyped @TempRef
+newLabel' :: (HasTempRef cfg, MonadIO m) => SymbolM m -> cfg -> m Label
+newLabel' symM cfg = do
   l <- liftIO $ do
     tempData <- readIORef ref
     writeIORef ref tempData { _label = _label tempData + 1 }
     return $ _label tempData
   toSymbol symM $ "L" ++ show l
+ where TempRef ref = getTempRef cfg

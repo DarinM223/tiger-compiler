@@ -48,8 +48,8 @@ mkMipsData tempM = MipsData
   <*> newTemp tempM
   <*> newTemp tempM
 
-frameMIO :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame m
-frameMIO tempM = FrameM
+mkFrameM :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame m
+mkFrameM tempM = FrameM
   { newFrame        = newFrame' tempM
   , allocLocalFrame = allocLocalFrame' tempM
   , name            = getField @"_name"
