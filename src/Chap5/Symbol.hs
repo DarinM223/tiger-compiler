@@ -51,7 +51,7 @@ toSymbol' cfg str = liftIO (H.lookup table str) >>= \case
     return $ Symbol (str, sym)
  where
   table = getSymbolTable cfg
-  (SymbolRef ref) = getSymbolRef cfg
+  SymbolRef ref = getSymbolRef cfg
 
 getSymbols' :: (MonadIO m, HasSymbolTable cfg)
             => cfg -> m (HM.HashMap String Int)

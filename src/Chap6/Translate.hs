@@ -70,7 +70,7 @@ newLevel' tempM frameM init = do
 allocLocal' :: Functor m => FrameM access frame m
             -> Level frame -> Bool -> m (Access frame access)
 allocLocal' frameM level escapes =
-  Access level <$> (allocLocalFrame frameM) (_frame level) escapes
+  Access level <$> allocLocalFrame frameM (_frame level) escapes
 
 mkMipsM :: ( HasTempRef cfg, HasSymbolRef cfg, HasSymbolTable cfg
            , MonadThrow m, MonadIO m )
