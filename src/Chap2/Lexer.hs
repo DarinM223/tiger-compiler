@@ -18,13 +18,6 @@ data Config = Config
   , _tempRef  :: TempRef
   }
 
-instance HasSymbolRef Config where
-  getSymbolRef = _symRef
-instance HasSymbolTable Config where
-  getSymbolTable = _symTable
-instance HasTempRef Config where
-  getTempRef = _tempRef
-
 mkConfig :: IO Config
 mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable <*> mkTempRef
 

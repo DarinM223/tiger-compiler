@@ -1,15 +1,10 @@
 module Chap6.Translate where
 
-import Control.Monad.Catch
-import Control.Monad.Reader
-import Chap5.Symbol
-import Chap6.Temp
 import Chap6.Frame (FrameM (..))
 import Chap6.Temp (TempM (..))
 import GHC.Records
 import qualified Chap6.Frame as Frame
 import qualified Chap6.Temp as Temp
-import qualified Chap6.MipsFrame as Mips
 
 data Init level = Init
   { _parent  :: level
@@ -25,8 +20,6 @@ data TranslateM level access m = TranslateM
   , outermost     :: level
   , levelFormals  :: level -> [access]
   }
-class HasTranslateM level access m effs | effs -> level access m where
-  getTranslateM :: effs -> TranslateM level access m
 
 data Level frame = Level
   { _parent  :: Level frame
@@ -71,12 +64,3 @@ allocLocal' :: Functor m => FrameM access frame m
             -> Level frame -> Bool -> m (Access frame access)
 allocLocal' frameM level escapes =
   Access level <$> allocLocalFrame frameM (_frame level) escapes
-
-mkMipsM :: ( HasTempRef cfg, HasSymbolRef cfg, HasSymbolTable cfg
-           , MonadThrow m, MonadIO m )
-        => cfg -> TransM Mips.Frame Mips.Access m
-mkMipsM cfg = mkTranslateM tempM frameM
- where
-  symM = mkSymbolM cfg
-  tempM = mkTempM symM cfg
-  frameM = Mips.mkFrameM tempM

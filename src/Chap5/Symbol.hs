@@ -8,8 +8,6 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.HashTable.IO as H
 
 type SymbolTable = H.BasicHashTable String Int
-class HasSymbolTable cfg where
-  getSymbolTable :: cfg -> SymbolTable
 
 mkSymbolTable :: IO SymbolTable
 mkSymbolTable = H.new
@@ -20,8 +18,6 @@ instance Eq Symbol where
   Symbol (_, i1) == Symbol (_, i2) = i1 == i2
 
 newtype SymbolRef = SymbolRef { unSymbolRef :: IORef Int }
-class HasSymbolRef cfg where
-  getSymbolRef :: cfg -> SymbolRef
 
 mkSymbolRef :: IO SymbolRef
 mkSymbolRef = SymbolRef <$> newIORef 0
@@ -30,33 +26,24 @@ data SymbolM m = SymbolM
   { toSymbol   :: String -> m Symbol
   , getSymbols :: m (HM.HashMap String Int)
   }
-class HasSymbolM m effs | effs -> m where
-  getSymbolM :: effs -> SymbolM m
 
-mkSymbolM :: (MonadIO m, HasSymbolRef cfg, HasSymbolTable cfg)
-          => cfg -> SymbolM m
-mkSymbolM cfg = SymbolM
-  { toSymbol   = toSymbol' cfg
-  , getSymbols = getSymbols' cfg
+mkSymbolM :: MonadIO m => SymbolRef -> SymbolTable -> SymbolM m
+mkSymbolM ref table = SymbolM
+  { toSymbol   = toSymbol' ref table
+  , getSymbols = getSymbols' table
   }
 
-toSymbol' :: (MonadIO m, HasSymbolRef cfg, HasSymbolTable cfg)
-          => cfg -> String -> m Symbol
-toSymbol' cfg str = liftIO (H.lookup table str) >>= \case
+toSymbol' :: MonadIO m => SymbolRef -> SymbolTable -> String -> m Symbol
+toSymbol' (SymbolRef ref) table str = liftIO (H.lookup table str) >>= \case
   Just sym -> return $ Symbol (str, sym)
   Nothing  -> liftIO $ do
     sym <- readIORef ref
     H.insert table str sym
     writeIORef ref (sym + 1)
     return $ Symbol (str, sym)
- where
-  table = getSymbolTable cfg
-  SymbolRef ref = getSymbolRef cfg
 
-getSymbols' :: (MonadIO m, HasSymbolTable cfg)
-            => cfg -> m (HM.HashMap String Int)
-getSymbols' cfg = HM.fromList <$> liftIO (H.toList table)
- where table = getSymbolTable cfg
+getSymbols' :: MonadIO m => SymbolTable -> m (HM.HashMap String Int)
+getSymbols' table = HM.fromList <$> liftIO (H.toList table)
 
 fromSymbol :: Symbol -> String
 fromSymbol = fst . unSymbol

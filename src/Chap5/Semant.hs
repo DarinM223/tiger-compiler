@@ -4,7 +4,7 @@ import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Monad.Reader
-import Chap2.Lexer (Config, mkConfig)
+import Chap2.Lexer (Config (..), mkConfig)
 import Chap3.Parser (parseExpr)
 import Chap5.Symbol (Pos, Symbol (Symbol), SymbolM (..), fromSymbol, mkSymbolM, symbolValue)
 import Chap5.Table
@@ -356,11 +356,14 @@ transTy (AST.RecordTy fields) tenv = do
   trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
 transTy (AST.ArrayTy sym pos) tenv = TArray <$> lookTy pos sym tenv <*> mkUnique
 
-runExp :: Config -> TEnv -> VEnv Mips.Frame Mips.Access -> AST.Exp -> IO ExpTy
-runExp config tenv venv exp = do
-  let symbolM = mkSymbolM config
-      tempM   = mkTempM symbolM config
-      transM  = mkMipsM config
+runExp :: SymbolM IO
+       -> TempM IO
+       -> TransM Mips.Frame Mips.Access IO
+       -> TEnv
+       -> VEnv Mips.Frame Mips.Access
+       -> AST.Exp
+       -> IO ExpTy
+runExp symbolM tempM transM tenv venv exp = do
   mainName <- namedLabel tempM "main"
   mainLevel <- newLevel transM (Init Outermost mainName [])
   transExp symbolM transM exp mainLevel tenv venv False
@@ -368,20 +371,26 @@ runExp config tenv venv exp = do
 testTy :: String -> IO ExpTy
 testTy text = do
   config <- mkConfig
-  let symbolM = mkSymbolM config
-      transM  = mkMipsM config
+  let symbolM = mkSymbolM (_symRef config) (_symTable config)
+      tempM   = mkTempM symbolM (_tempRef config)
+      transM  = mkTranslateM tempM (Mips.mkFrameM tempM)
   (tenv, venv) <- mkEnvs symbolM transM
   runReaderT (runParserT parseExpr "" text) config >>= \case
     Left err  -> throwM err
-    Right exp -> runExp config tenv venv exp
+    Right exp -> runExp symbolM tempM transM tenv venv exp
 
 testTySyms :: String -> IO (HM.HashMap String Int, ExpTy)
 testTySyms text = do
   config <- mkConfig
-  let symbolM = mkSymbolM config
-      transM  = mkMipsM config
+  let symbolM = mkSymbolM (_symRef config) (_symTable config)
+      tempM   = mkTempM symbolM (_tempRef config)
+      transM  = mkTranslateM tempM (Mips.mkFrameM tempM)
   (tenv, venv) <- mkEnvs symbolM transM
   runReaderT (runParserT (parse config) "" text) config >>= \case
     Left err             -> throwM err
-    Right (exp, symbols) -> (symbols ,) <$> runExp config tenv venv exp
- where parse config = (,) <$> parseExpr <*> getSymbols (mkSymbolM config)
+    Right (exp, symbols) -> (symbols ,)
+                        <$> runExp symbolM tempM transM tenv venv exp
+ where
+  parse config = (,)
+    <$> parseExpr
+    <*> getSymbols (mkSymbolM (_symRef config) (_symTable config))

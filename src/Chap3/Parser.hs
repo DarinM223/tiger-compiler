@@ -213,7 +213,7 @@ annot = (,) <$> getSourcePos <*> (symbol ":" *> ident)
 ident :: Parser Symbol
 ident = do
   config <- lift ask
-  identifier >>= toSymbol' config
+  identifier >>= toSymbol' (_symRef config) (_symTable config)
 
 parseExpr :: Parser Exp
 parseExpr = sc *> expr <* eof
