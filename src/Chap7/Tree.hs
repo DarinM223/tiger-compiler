@@ -19,6 +19,7 @@ data Exp = Const Int
          | ESeq Stm Exp
          -- ^ Evaluates the statement, then evaluates and returns the
          -- expression.
+         deriving (Show, Eq)
 
 data Stm = Move Exp Exp
          -- ^ MOVE (Temp t, e): Evaluate e and move to temporary t.
@@ -38,6 +39,7 @@ data Stm = Move Exp Exp
          | Label Temp.Label
          -- ^ Sets the value of the label to be the current machine code
          -- address.
+         deriving (Show, Eq)
 
 data BinOp = Plus | Minus | Mul | Div | And | Or
            | LShift | RShift | ARShift | Xor

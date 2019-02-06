@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Chap5.Semant where
 
 import Control.Monad (forM_, void, when)
@@ -8,7 +10,7 @@ import Chap2.Lexer (Config (..), mkConfig)
 import Chap3.Parser (parseExpr)
 import Chap5.Symbol (Pos, Symbol (Symbol), SymbolM (..), fromSymbol, mkSymbolM, symbolValue)
 import Chap5.Table
-import Chap6.Temp (mkTempM, TempM (namedLabel))
+import Chap6.Temp (mkTempM, TempM (TempM, namedLabel))
 import Chap6.Translate
 import Data.IORef
 import Data.Maybe (fromMaybe)
@@ -20,7 +22,6 @@ import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.HashMap.Strict as HM
 
-data Exp = EUnit deriving (Show, Eq)
 data ExpTy = ExpTy Exp Ty deriving (Show, Eq)
 data OpType = Arithmetic -- ^ Operation over two integers
             | Comparison -- ^ Operation over integers or strings
@@ -121,7 +122,7 @@ transExp :: (MonadIO m, MonadThrow m)
          -> VEnv frame access
          -> Bool
          -> m ExpTy
-transExp symM transM exp level tenv venv break = case exp of
+transExp symM@SymbolM{..} transM exp level tenv venv break = case exp of
   AST.NilExp        -> return $ ExpTy EUnit TNil
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
@@ -153,7 +154,7 @@ transExp symM transM exp level tenv venv break = case exp of
     return $ ExpTy EUnit bodyTy
 
   AST.ForExp (AST.ForExp' pos varSym escRef lo hi body) -> do
-    limitSym <- toSymbol symM "limit"
+    limitSym <- toSymbol "limit"
     let ivar     = AST.SimpleVar varSym pos
         limitvar = AST.SimpleVar limitSym pos
     limitEscRef <- AST.mkEscape
@@ -248,11 +249,11 @@ transDec :: (MonadIO m, MonadThrow m)
          -> VEnv frame access
          -> Bool
          -> m (TEnv, VEnv frame access)
-transDec symM transM dec level tenv venv break = case dec of
+transDec symM transM@TranslateM{..} dec level tenv venv break = case dec of
   AST.VarDec (AST.VarDec' _ name Nothing init escapeRef) -> do
     ExpTy _ ty <- transExp symM transM init level tenv venv break
     escape <- AST.readEscape escapeRef
-    access <- allocLocal transM level escape
+    access <- allocLocal level escape
     return (tenv, enter name (VarEntry access ty) venv)
 
   AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init escapeRef) -> do
@@ -260,7 +261,7 @@ transDec symM transM dec level tenv venv break = case dec of
     ExpTy _ ty' <- transExp symM transM init level tenv venv break
     checkTy pos ty ty'
     escape <- AST.readEscape escapeRef
-    access <- allocLocal transM level escape
+    access <- allocLocal level escape
     return (tenv, enter name (VarEntry access ty) venv)
 
   AST.TypeDec decs -> do
@@ -321,7 +322,7 @@ transDec symM transM dec level tenv venv break = case dec of
           <$> (VarEntry access <$> lookTy pos ty tenv)
           <*> pure env)
         venv'
-        (zip params (levelFormals transM newlevel))
+        (zip params (levelFormals newlevel))
       rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty tenv) rt
       ExpTy _ ty <- transExp symM transM body newlevel tenv venv'' break
       checkTy pos rty ty
@@ -341,7 +342,7 @@ transDec symM transM dec level tenv venv break = case dec of
     escapes <- traverse AST.readEscape
              $ fmap (\(AST.Field _ _ _ esc) -> esc) fields
     FunEntry
-      <$> newLevel transM (Init level name escapes)
+      <$> newLevel (Init level name escapes)
       <*> pure name
       <*> traverse (\(AST.Field pos _ ty _) -> lookTy pos ty tenv) fields
       <*> maybe (pure TUnit) (\(pos, ty) -> lookTy pos ty tenv) rt
@@ -363,9 +364,9 @@ runExp :: SymbolM IO
        -> VEnv Mips.Frame Mips.Access
        -> AST.Exp
        -> IO ExpTy
-runExp symbolM tempM transM tenv venv exp = do
-  mainName <- namedLabel tempM "main"
-  mainLevel <- newLevel transM (Init Outermost mainName [])
+runExp symbolM TempM{..} transM@TranslateM{..} tenv venv exp = do
+  mainName <- namedLabel "main"
+  mainLevel <- newLevel (Init Outermost mainName [])
   transExp symbolM transM exp mainLevel tenv venv False
 
 testTy :: String -> IO ExpTy

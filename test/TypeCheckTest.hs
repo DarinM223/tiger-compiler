@@ -4,6 +4,7 @@ import Control.Monad.Catch
 import Chap5.Semant
 import Chap5.Symbol
 import Chap5.Table hiding (look)
+import Chap6.Translate
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.HashMap.Strict as HM

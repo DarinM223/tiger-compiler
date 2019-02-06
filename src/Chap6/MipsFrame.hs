@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Chap6.MipsFrame where
 
 import Control.Monad.Catch
@@ -50,17 +52,18 @@ mkMipsData tempM = MipsData
 
 mkFrameM :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame m
 mkFrameM tempM = FrameM
-  { newFrame        = newFrame' tempM
-  , allocLocalFrame = allocLocalFrame' tempM
-  , name            = getField @"_name"
-  , formals         = getField @"_formals"
+  { newFrame   = newFrame' tempM wordSize'
+  , allocLocal = allocLocal' tempM wordSize'
+  , name       = getField @"_name"
+  , formals    = getField @"_formals"
+  , fp         = undefined
+  , wordSize   = wordSize'
+  , exp        = undefined
   }
+ where wordSize' = 4
 
-wordSize :: Int
-wordSize = 4
-
-newFrame' :: (MonadIO m, MonadThrow m) => TempM m -> Init -> m Frame
-newFrame' tempM init
+newFrame' :: (MonadIO m, MonadThrow m) => TempM m -> WordSize -> Init -> m Frame
+newFrame' TempM{..} wordSize init
   | formalsLen > 4 = throwM $ TooManyArgs formalsLen
   | otherwise      = Frame
     <$> pure (getField @"_name" init)
@@ -74,15 +77,16 @@ newFrame' tempM init
   allocFormal escapes (formals, offset)
     | escapes   = return (InFrame offset:formals, offset + wordSize)
     | otherwise = do
-      access <- InRegister . Temp.unTemp <$> newTemp tempM
+      access <- InRegister . Temp.unTemp <$> newTemp
       return (access:formals, offset)
 
-allocLocalFrame' :: MonadIO m => TempM m -> Frame -> Bool -> m Access
-allocLocalFrame' tempM frame escapes
+allocLocal' :: MonadIO m => TempM m -> WordSize
+            -> Frame -> Bool -> m Access
+allocLocal' TempM{..} wordSize frame escapes
   | escapes = do
     locals <- liftIO $ readIORef (_locals frame)
     let locals' = locals + 1
         offset  = locals' * (-wordSize)
     liftIO $ writeIORef (_locals frame) locals'
     return $ InFrame offset
-  | otherwise = InRegister . Temp.unTemp <$> newTemp tempM
+  | otherwise = InRegister . Temp.unTemp <$> newTemp

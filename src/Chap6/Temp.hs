@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Chap6.Temp where
 
 import Chap5.Symbol
@@ -40,9 +42,9 @@ newTemp' (TempRef ref) = liftIO $ do
   return $ _temp tempData
 
 newLabel' :: MonadIO m => SymbolM m -> TempRef -> m Label
-newLabel' symM (TempRef ref) = do
+newLabel' SymbolM{..} (TempRef ref) = do
   l <- liftIO $ do
     tempData <- readIORef ref
     writeIORef ref tempData { _label = _label tempData + 1 }
     return $ _label tempData
-  toSymbol symM $ "L" ++ show l
+  toSymbol $ "L" ++ show l
