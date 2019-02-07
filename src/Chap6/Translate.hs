@@ -24,21 +24,41 @@ data Exp = EUnit -- TODO(DarinM223): remove this later
          -- that evaluates a conditional and jumps to one of the labels.
          deriving (Show, Eq)
 
--- TODO(DarinM223): might need to pass in TempM into these functions.
-unEx :: Exp -> Tree.Exp
-unEx (Ex exp) = exp
-unEx (Nx stm) = undefined
-unEx (Cx f)   = undefined
+seqList :: [Tree.Stm] -> Tree.Stm
+seqList [stm]      = stm
+seqList (stm:stms) = Tree.Seq stm (seqList stms)
+seqList _          = error "Empty list"
 
-unNx :: Exp -> Tree.Stm
-unNx (Ex exp) = undefined
-unNx (Nx stm) = stm
-unNx (Cx f)   = undefined
+unEx :: Monad m => TempM m -> Exp -> m Tree.Exp
+unEx TempM{..} = \case
+  Ex exp                  -> return exp
+  Nx stm                  -> return $ Tree.ESeq stm (Tree.Const 0)
+  Cx (Conditional genStm) -> do
+    r <- newTemp
+    t <- newLabel
+    f <- newLabel
+    let stm = seqList
+          [ Tree.Move (Tree.Temp r) (Tree.Const 1)
+          , genStm t f
+          , Tree.Label f
+          , Tree.Move (Tree.Temp r) (Tree.Const 0)
+          , Tree.Label t
+          ]
+    return $ Tree.ESeq stm (Tree.Temp r)
+
+unNx :: Monad m => TempM m -> Exp -> m Tree.Stm
+unNx tempM = \case
+  Ex exp   -> return $ Tree.Exp exp
+  Nx stm   -> return stm
+  c@(Cx _) -> Tree.Exp <$> unEx tempM c
 
 unCx :: Exp -> (Temp.Label -> Temp.Label -> Tree.Stm)
-unCx (Ex exp)             = undefined
-unCx (Nx stm)             = undefined
-unCx (Cx (Conditional f)) = f
+unCx = \case
+  Nx _               -> error "This cannot happen"
+  Cx (Conditional f) -> f
+  Ex (Tree.Const 0)  -> \_ f -> Tree.Label f
+  Ex (Tree.Const 1)  -> \t _ -> Tree.Label t
+  Ex exp             -> \t f -> Tree.CJump Tree.Eq exp (Tree.Const 1) t f
 
 data Init level = Init
   { _parent  :: level
