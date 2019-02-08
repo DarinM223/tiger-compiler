@@ -6,6 +6,7 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap6.Frame
 import Chap6.Temp (TempM (..))
+import Chap7.Tree
 import Data.Foldable
 import Data.IORef
 import GHC.Records
@@ -38,19 +39,19 @@ data MipsData = MipsData
   }
 
 mkMipsData :: MonadIO m => TempM m -> m MipsData
-mkMipsData tempM = MipsData
-  <$> (V.fromList <$> replicateM 2 (newTemp tempM))
-  <*> (V.fromList <$> replicateM 4 (newTemp tempM))
-  <*> (V.fromList <$> replicateM 10 (newTemp tempM))
-  <*> (V.fromList <$> replicateM 8 (newTemp tempM))
-  <*> newTemp tempM
-  <*> newTemp tempM
-  <*> newTemp tempM
-  <*> newTemp tempM
-  <*> newTemp tempM
-  <*> newTemp tempM
+mkMipsData TempM{..} = MipsData
+  <$> (V.fromList <$> replicateM 2 newTemp)
+  <*> (V.fromList <$> replicateM 4 newTemp)
+  <*> (V.fromList <$> replicateM 10 newTemp)
+  <*> (V.fromList <$> replicateM 8 newTemp)
+  <*> newTemp
+  <*> newTemp
+  <*> newTemp
+  <*> newTemp
+  <*> newTemp
+  <*> newTemp
 
-mkFrameM :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame m
+mkFrameM :: (MonadIO m, MonadThrow m) => TempM m -> FrameM Access Frame Exp m
 mkFrameM tempM = FrameM
   { newFrame   = newFrame' tempM wordSize'
   , allocLocal = allocLocal' tempM wordSize'
@@ -58,7 +59,7 @@ mkFrameM tempM = FrameM
   , formals    = getField @"_formals"
   , fp         = undefined
   , wordSize   = wordSize'
-  , exp        = undefined
+  , frameExp   = undefined
   }
  where wordSize' = 4
 
