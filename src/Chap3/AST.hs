@@ -83,7 +83,6 @@ data ArrayExp' = ArrayExp'
   , _init :: Exp
   } deriving (Show)
 
--- TODO(DarinM223): change to be multiple decs instead of a single dec.
 data Dec = FunctionDec [FunDec]
          | VarDec VarDec'
          | TypeDec [TypeDec']

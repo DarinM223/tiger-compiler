@@ -139,6 +139,5 @@ simpleVar' FrameM{..} access level = Ex $ go (Tree.Temp fp) level
   go acc Level{ _parent = parent, _frame = frame, _ref = ref }
     | defRef == ref = frameExp defAccess acc
     | otherwise     = go (frameExp staticLink acc) parent
-   where
-    staticLink = head (formals frame)
+   where staticLink = head (formals frame)
   go _ _ = error "Invalid pattern Outermost in simpleVar"

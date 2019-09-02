@@ -2,12 +2,14 @@
 
 module Chap5.Semant where
 
+import Control.Lens ((^.))
 import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap2.Lexer (Config (..), mkConfig)
 import Chap3.Parser (parseExpr)
+import Chap5.Effs
 import Chap5.Symbol (Pos, Symbol (Symbol), SymbolM (..), fromSymbol, mkSymbolM, symbolValue)
 import Chap5.Table
 import Chap6.Temp (mkTempM, TempM (TempM, namedLabel))
@@ -31,16 +33,17 @@ data OpType = Arithmetic -- ^ Operation over two integers
 data Err = Err Pos String deriving (Show)
 instance Exception Err
 
-transVar :: (MonadIO m, MonadThrow m)
-         => SymbolM m
-         -> TransM frame access m
+transVar :: ( MonadIO m, MonadThrow m
+            , HasSymbolM effs (SymbolM m)
+            , HasTransM effs (TransM frame access m) )
+         => effs
          -> AST.Var
          -> Level frame
          -> TEnv
          -> VEnv frame access
          -> Bool
          -> m ExpTy
-transVar symM transM var level tenv venv break = case var of
+transVar effs var level tenv venv break = case var of
   AST.SimpleVar id pos -> case look id venv of
     Just (VarEntry _ ty) -> ExpTy EUnit <$> actualTy ty
     _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
@@ -53,12 +56,12 @@ transVar symM transM var level tenv venv break = case var of
       _ -> throwM $ Err pos "lvalue not a record type"
   AST.SubscriptVar var' exp pos -> do
     ty <- trVar var' >>= \(ExpTy _ var) -> actualTy var
-    ExpTy _ expTy <- transExp symM transM exp level tenv venv break
+    ExpTy _ expTy <- transExp effs exp level tenv venv break
     checkTy pos TInt expTy
     case ty of
       TArray ty _ -> return $ ExpTy EUnit ty
       _           -> throwM $ Err pos "lvalue not an array type"
- where trVar var = transVar symM transM var level tenv venv break
+ where trVar var = transVar effs var level tenv venv break
 
 -- | Trace through TName types to their underlying definitions.
 actualTy :: MonadIO m => Ty -> m Ty
@@ -113,16 +116,17 @@ checkOpType Equality ty   = case ty of
   TNil        -> True
   _           -> False
 
-transExp :: (MonadIO m, MonadThrow m)
-         => SymbolM m
-         -> TransM frame access m
+transExp :: ( MonadIO m, MonadThrow m
+            , HasSymbolM effs (SymbolM m)
+            , HasTransM effs (TransM frame access m) )
+         => effs
          -> AST.Exp
          -> Level frame
          -> TEnv
          -> VEnv frame access
          -> Bool
          -> m ExpTy
-transExp symM@SymbolM{..} transM exp level tenv venv break = case exp of
+transExp effs exp level tenv venv break = case exp of
   AST.NilExp        -> return $ ExpTy EUnit TNil
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
@@ -148,7 +152,7 @@ transExp symM@SymbolM{..} transM exp level tenv venv break = case exp of
 
   AST.WhileExp (AST.WhileExp' pos test body) -> do
     ExpTy _ testTy <- trExp test
-    ExpTy _ bodyTy <- transExp' body level tenv venv True
+    ExpTy _ bodyTy <- transExp effs body level tenv venv True
     checkTy pos TInt testTy
     checkTy pos TUnit bodyTy
     return $ ExpTy EUnit bodyTy
@@ -203,9 +207,9 @@ transExp symM@SymbolM{..} transM exp level tenv venv break = case exp of
 
   AST.LetExp (AST.LetExp' _ decs body) -> do
     (tenv', venv') <- foldlM
-      (\(!tenv, !venv) dec -> transDec symM transM dec level tenv venv break)
+      (\(!tenv, !venv) dec -> transDec effs dec level tenv venv break)
       (tenv, venv) decs
-    transExp' body level tenv' venv' break
+    transExp effs body level tenv' venv' break
 
   AST.OpExp left op right pos -> do
     ExpTy _ tyleft <- trExp left
@@ -217,9 +221,10 @@ transExp symM@SymbolM{..} transM exp level tenv venv break = case exp of
                                ++ " for " ++ show opType
     ExpTy EUnit TInt <$ check
  where
-  transExp' = transExp symM transM
-  trExp exp = transExp symM transM exp level tenv venv break
-  trVar var = transVar symM transM var level tenv venv break
+  SymbolM{..} = effs ^. symbolM
+
+  trExp exp = transExp effs exp level tenv venv break
+  trVar var = transVar effs var level tenv venv break
   trField (pos, sym, exp) = (\(ExpTy _ ty) -> (pos, sym, ty)) <$> trExp exp
 
 matchTys :: (MonadIO m, MonadThrow m)
@@ -240,25 +245,26 @@ matchTys pos l1 l2
   buildMap = foldl' append IM.empty
   append map (sym, ty) = IM.insert (symbolValue sym) ty map
 
-transDec :: (MonadIO m, MonadThrow m)
-         => SymbolM m
-         -> TransM frame access m
+transDec :: ( MonadIO m, MonadThrow m
+            , HasSymbolM effs (SymbolM m)
+            , HasTransM effs (TransM frame access m) )
+         => effs
          -> AST.Dec
          -> Level frame
          -> TEnv
          -> VEnv frame access
          -> Bool
          -> m (TEnv, VEnv frame access)
-transDec symM transM@TranslateM{..} dec level tenv venv break = case dec of
+transDec effs dec level tenv venv break = case dec of
   AST.VarDec (AST.VarDec' _ name Nothing init escapeRef) -> do
-    ExpTy _ ty <- transExp symM transM init level tenv venv break
+    ExpTy _ ty <- transExp effs init level tenv venv break
     escape <- AST.readEscape escapeRef
     access <- allocLocal level escape
     return (tenv, enter name (VarEntry access ty) venv)
 
   AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init escapeRef) -> do
     ty <- lookTy pos' tySym tenv
-    ExpTy _ ty' <- transExp symM transM init level tenv venv break
+    ExpTy _ ty' <- transExp effs init level tenv venv break
     checkTy pos ty ty'
     escape <- AST.readEscape escapeRef
     access <- allocLocal level escape
@@ -324,10 +330,12 @@ transDec symM transM@TranslateM{..} dec level tenv venv break = case dec of
         venv'
         (zip params (levelFormals newlevel))
       rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty tenv) rt
-      ExpTy _ ty <- transExp symM transM body newlevel tenv venv'' break
+      ExpTy _ ty <- transExp effs body newlevel tenv venv'' break
       checkTy pos rty ty
     return (tenv, venv')
  where
+  TranslateM{..} = effs ^. transM
+
   checkCycles pos name tenv = go [] name
    where
     go seen name
@@ -364,10 +372,14 @@ runExp :: SymbolM IO
        -> VEnv Mips.Frame Mips.Access
        -> AST.Exp
        -> IO ExpTy
-runExp symbolM TempM{..} transM@TranslateM{..} tenv venv exp = do
+runExp symbolM tempM@TempM{..} transM@TranslateM{..} tenv venv exp = do
   mainName <- namedLabel "main"
   mainLevel <- newLevel (Init Outermost mainName [])
-  transExp symbolM transM exp mainLevel tenv venv False
+  let effs = SemantEffs { semantEffsTempM   = tempM
+                        , semantEffsTransM  = transM
+                        , semantEffsSymbolM = symbolM
+                        }
+  transExp effs exp mainLevel tenv venv False
 
 testTy :: String -> IO ExpTy
 testTy text = do
