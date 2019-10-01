@@ -1,5 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
-
 module ParserTest (tests) where
 
 import Chap2.Lexer

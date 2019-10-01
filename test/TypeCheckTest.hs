@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module TypeCheckTest (tests) where
 
 import Control.Monad.Catch

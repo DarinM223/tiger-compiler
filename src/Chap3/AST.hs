@@ -1,3 +1,4 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 module Chap3.AST where
 
 import Chap5.Symbol

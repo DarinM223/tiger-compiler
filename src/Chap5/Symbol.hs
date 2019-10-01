@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Chap5.Symbol where
 
 import Control.Monad.Reader

@@ -1,5 +1,14 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ImplicitParams #-}
-module Chap5.Semant where
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
+module Chap5.Semant
+  ( ExpTy (..)
+  , runExp
+  , testTy
+  , testTySyms
+  ) where
 
 import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Class
@@ -358,13 +367,14 @@ transTy (AST.RecordTy fields) tenv = do
   trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
 transTy (AST.ArrayTy sym pos) tenv = TArray <$> lookTy pos sym tenv <*> mkUnique
 
-runExp :: SymbolM IO
-       -> TempM IO
-       -> TransM Mips.Frame Mips.Access IO
+runExp :: (MonadIO m, MonadThrow m)
+       => SymbolM m
+       -> TempM m
+       -> TransM Mips.Frame Mips.Access m
        -> TEnv
        -> VEnv Mips.Frame Mips.Access
        -> AST.Exp
-       -> IO ExpTy
+       -> m ExpTy
 runExp symbolM TempM{..} transM@TranslateM{..} tenv venv exp = do
   mainName <- namedLabel "main"
   mainLevel <- newLevel (Init Outermost mainName [])
