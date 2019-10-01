@@ -1,8 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Chap6.Temp where
 
 import Chap5.Symbol
+import Control.Lens (Lens')
 import Control.Monad.Reader
 import Data.IORef
 
@@ -16,6 +15,9 @@ data TempM m = TempM
   , newLabel   :: m Label
   , namedLabel :: String -> m Label
   }
+
+class HasTempM s a | s -> a where
+  tempM :: Lens' s a
 
 data TempData = TempData
   { _temp  :: Temp

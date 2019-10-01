@@ -1,5 +1,6 @@
 module Chap5.Symbol where
 
+import Control.Lens (Lens')
 import Control.Monad.Reader
 import Data.IORef
 import Text.Megaparsec (SourcePos)
@@ -26,6 +27,9 @@ data SymbolM m = SymbolM
   { toSymbol   :: String -> m Symbol
   , getSymbols :: m (HM.HashMap String Int)
   }
+
+class HasSymbolM s a | s -> a where
+  symbolM :: Lens' s a
 
 mkSymbolM :: MonadIO m => SymbolRef -> SymbolTable -> SymbolM m
 mkSymbolM ref table = SymbolM

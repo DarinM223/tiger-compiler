@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Chap6.MipsFrame where
 
 import Control.Monad.Catch

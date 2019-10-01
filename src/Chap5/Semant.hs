@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Chap5.Semant where
 
 import Control.Lens ((^.))
@@ -9,8 +7,8 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap2.Lexer (Config (..), mkConfig)
 import Chap3.Parser (parseExpr)
-import Chap5.Effs
-import Chap5.Symbol (Pos, Symbol (Symbol), SymbolM (..), fromSymbol, mkSymbolM, symbolValue)
+import Chap5.Effs (SemantEffs (..))
+import Chap5.Symbol
 import Chap5.Table
 import Chap6.Temp (mkTempM, TempM (TempM, namedLabel))
 import Chap6.Translate

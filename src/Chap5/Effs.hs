@@ -1,10 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Chap5.Effs where
 
-import Chap5.Symbol (SymbolM)
-import Chap6.Temp (TempM)
-import Chap6.Translate (TransM)
-import Control.Lens
+import Chap5.Symbol (HasSymbolM (..), SymbolM)
+import Chap6.Temp (HasTempM (..), TempM)
+import Chap6.Translate (HasTransM (..), TransM)
+import Control.Lens (makeFields)
 
 data SemantEffs frame access m = SemantEffs
   { semantEffsSymbolM :: SymbolM m
