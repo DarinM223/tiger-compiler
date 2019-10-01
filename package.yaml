@@ -25,7 +25,6 @@ dependencies:
 - containers
 - exceptions
 - hashtables
-- lens
 - megaparsec
 - mtl
 - neat-interpolation

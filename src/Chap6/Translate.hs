@@ -2,7 +2,6 @@ module Chap6.Translate where
 
 import Chap6.Frame (FrameM (..))
 import Chap6.Temp (TempM (..))
-import Control.Lens (Lens')
 import Control.Monad.IO.Class
 import Data.IORef
 import GHC.Records
@@ -94,9 +93,6 @@ data Access frame access = Access
 
 type TransM frame access m =
   TranslateM (Level frame) (Access frame access) Exp m
-
-class HasTransM s a | s -> a where
-  transM :: Lens' s a
 
 mkTranslateM :: MonadIO m => TempM m -> FrameM access frame Tree.Exp m
              -> TranslateM (Level frame) (Access frame access) Exp m
