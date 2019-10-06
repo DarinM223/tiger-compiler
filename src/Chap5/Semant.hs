@@ -52,17 +52,17 @@ type Context frame access m
   = ( ?symbolM :: SymbolM m
     , ?transM  :: TransM frame access m
     , ?refM    :: RefM (Ref m) m
-    , ?gLevel  :: Level frame
-    , ?gTenv   :: TEnv (Ref m)
-    , ?gVenv   :: VEnv (Ref m) frame access
-    , ?gBreak  :: Bool
+    , ?level   :: Level frame
+    , ?tenv    :: TEnv (Ref m)
+    , ?venv    :: VEnv (Ref m) frame access
+    , ?break   :: Bool
     )
 
 type Semant f a m = (MonadThrow m, Eq1 (Ref m), Context f a m)
 
 transVar :: Semant f a m => AST.Var (Ref m) -> m (ExpTy (Ref m))
 transVar = \case
-  AST.SimpleVar id pos -> case look id ?gVenv of
+  AST.SimpleVar id pos -> case look id ?venv of
     Just (VarEntry _ ty) -> ExpTy EUnit <$> actualTy ty
     _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
   AST.FieldVar var' id pos -> do
@@ -142,7 +142,7 @@ transExp = \case
   AST.IntExp _      -> return $ ExpTy EUnit TInt
   AST.VarExp var    -> transVar var
 
-  AST.BreakExp pos -> if ?gBreak
+  AST.BreakExp pos -> if ?break
     then return $ ExpTy EUnit TUnit
     else throwM $ Err pos "Break statement not inside enclosing loop"
 
@@ -162,7 +162,7 @@ transExp = \case
 
   AST.WhileExp (AST.WhileExp' pos test body) -> do
     ExpTy _ testTy <- transExp test
-    ExpTy _ bodyTy <- let ?gBreak = True in transExp body
+    ExpTy _ bodyTy <- let ?break = True in transExp body
     checkTy pos TInt testTy
     checkTy pos TUnit bodyTy
     return $ ExpTy EUnit bodyTy
@@ -185,7 +185,7 @@ transExp = \case
     transExp $ AST.LetExp $ AST.LetExp' pos decs loop
 
   AST.RecordExp (AST.RecordExp' pos tySym fields) -> do
-    ty <- lookTy pos tySym ?gTenv >>= actualTy
+    ty <- lookTy pos tySym ?tenv >>= actualTy
     case ty of
       TRecord fieldTys _ -> do
         fieldTys' <- traverse trField fields
@@ -194,7 +194,7 @@ transExp = \case
       _ -> throwM $ Err pos $ "type " ++ show tySym ++ " is not a record"
 
   AST.ArrayExp (AST.ArrayExp' pos tySym size init) -> do
-    arrayTy <- lookTy pos tySym ?gTenv >>= actualTy
+    arrayTy <- lookTy pos tySym ?tenv >>= actualTy
     case arrayTy of
       TArray ty _ -> do
         ExpTy _ sizeTy <- transExp size
@@ -207,7 +207,7 @@ transExp = \case
   AST.SeqExp exps ->
     foldlM (\_ (_, exp) -> transExp exp) (ExpTy EUnit TNil) exps
 
-  AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym ?gVenv of
+  AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym ?venv of
     Just (FunEntry _ _ tys rt) -> do
       tys' <- fmap (\(ExpTy _ ty) -> ty) <$> traverse transExp args
       if tys == tys'
@@ -218,10 +218,10 @@ transExp = \case
 
   AST.LetExp (AST.LetExp' _ decs body) -> do
     (tenv', venv') <- foldlM
-      (\(!tenv, !venv) dec -> let { ?gTenv = tenv; ?gVenv = venv }
+      (\(!tenv, !venv) dec -> let { ?tenv = tenv; ?venv = venv }
                               in transDec dec)
-      (?gTenv, ?gVenv) decs
-    let { ?gTenv = tenv'; ?gVenv = venv' } in transExp body
+      (?tenv, ?venv) decs
+    let { ?tenv = tenv'; ?venv = venv' } in transExp body
 
   AST.OpExp left op right pos -> do
     ExpTy _ tyleft <- transExp left
@@ -260,16 +260,16 @@ transDec = \case
   AST.VarDec (AST.VarDec' _ name Nothing init escapeRef) -> do
     ExpTy _ ty <- transExp init
     escape <- AST.readEscape escapeRef
-    access <- allocLocal ?transM ?gLevel escape
-    return (?gTenv, enter name (VarEntry access ty) ?gVenv)
+    access <- allocLocal ?transM ?level escape
+    return (?tenv, enter name (VarEntry access ty) ?venv)
 
   AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init escapeRef) -> do
-    ty <- lookTy pos' tySym ?gTenv
+    ty <- lookTy pos' tySym ?tenv
     ExpTy _ ty' <- transExp init
     checkTy pos ty ty'
     escape <- AST.readEscape escapeRef
-    access <- allocLocal ?transM ?gLevel escape
-    return (?gTenv, enter name (VarEntry access ty) ?gVenv)
+    access <- allocLocal ?transM ?level escape
+    return (?tenv, enter name (VarEntry access ty) ?venv)
 
   AST.TypeDec decs -> do
     checkDup $ fmap (\(AST.TypeDec' pos name _) -> (name, pos)) decs
@@ -285,7 +285,7 @@ transDec = \case
     tenv' <- foldlM
       (\env (AST.TypeDec' _ name _) ->
         enter name <$> (TName <$> pure name <*> mkTRef) <*> pure env)
-      ?gTenv
+      ?tenv
       decs
 
     -- Second pass: if left side symbol is a TName, then translate
@@ -304,7 +304,7 @@ transDec = \case
 
     -- Third pass: check declarations for cycles.
     mapM_ (\(AST.TypeDec' pos name _) -> checkCycles pos name tenv') decs
-    return (tenv', ?gVenv)
+    return (tenv', ?venv)
 
   AST.FunctionDec decs -> do
     checkDup $ fmap (\(AST.FunDec pos name _ _ _) -> (name, pos)) decs
@@ -313,9 +313,9 @@ transDec = \case
     venv' <- foldlM
       (\env (AST.FunDec _ name params rt _)
         ->  enter name
-        <$> funHeader (newLevel ?transM) ?gTenv name ?gLevel params rt
+        <$> funHeader (newLevel ?transM) ?tenv name ?level params rt
         <*> pure env)
-      ?gVenv
+      ?venv
       decs
 
     -- Second pass: for each declaration, insert the parameter
@@ -328,15 +328,15 @@ transDec = \case
       venv'' <- foldlM
         (\env (AST.Field _ name ty _, access)
           ->  enter name
-          <$> (VarEntry access <$> lookTy pos ty ?gTenv)
+          <$> (VarEntry access <$> lookTy pos ty ?tenv)
           <*> pure env)
         venv'
         (zip params (levelFormals ?transM newlevel))
-      rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty ?gTenv) rt
-      ExpTy _ ty <- let { ?gLevel = newlevel; ?gVenv = venv'' }
+      rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty ?tenv) rt
+      ExpTy _ ty <- let { ?level = newlevel; ?venv = venv'' }
                     in transExp body
       checkTy pos rty ty
-    return (?gTenv, venv')
+    return (?tenv, venv')
  where
   checkCycles pos name tenv = go [] name
    where
@@ -380,10 +380,7 @@ runExp :: (MonadThrow m, Eq1 (Ref m))
 runExp tenv venv exp = do
   mainName <- namedLabel ?tempM "main"
   mainLevel <- newLevel ?transM (Init Outermost mainName [])
-  let ?gLevel = mainLevel
-      ?gTenv  = tenv
-      ?gVenv  = venv
-      ?gBreak = False
+  let { ?level = mainLevel; ?tenv = tenv; ?venv = venv; ?break = False }
   transExp exp
 
 testTy :: String -> IO (ExpTy IORef)
