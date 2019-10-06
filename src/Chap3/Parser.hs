@@ -28,18 +28,18 @@ ty = getSourcePos >>= \pos
 
 tyfield :: Monad m => ParserContext m => Parser m (Field (Ref m))
 tyfield = Field
-  <$> getSourcePos
-  <*> ident
-  <*> (symbol ":" *> ident)
-  <*> lift mkEscape
+      <$> getSourcePos
+      <*> ident
+      <*> (symbol ":" *> ident)
+      <*> lift mkEscape
 
 vardec :: Monad m => ParserContext m => Parser m (VarDec' (Ref m))
 vardec = VarDec'
-  <$> getSourcePos
-  <*> (rword "var" *> ident)
-  <*> optional (try annot)
-  <*> (symbol ":=" *> expr)
-  <*> lift mkEscape
+     <$> getSourcePos
+     <*> (rword "var" *> ident)
+     <*> optional (try annot)
+     <*> (symbol ":=" *> expr)
+     <*> lift mkEscape
 
 fundec :: Monad m => ParserContext m => Parser m (FunDec (Ref m))
 fundec = FunDec

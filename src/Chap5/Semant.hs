@@ -55,7 +55,8 @@ type Context frame access m
     , ?gLevel  :: Level frame
     , ?gTenv   :: TEnv (Ref m)
     , ?gVenv   :: VEnv (Ref m) frame access
-    , ?gBreak  :: Bool )
+    , ?gBreak  :: Bool
+    )
 
 type Semant f a m = (MonadThrow m, Eq1 (Ref m), Context f a m)
 

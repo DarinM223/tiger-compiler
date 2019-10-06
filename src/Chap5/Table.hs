@@ -6,7 +6,7 @@ module Chap5.Table where
 import Chap3.AST (RefM (..))
 import Chap5.Symbol
 import Chap6.Translate
-import Data.Functor.Classes (Eq1 (liftEq))
+import Data.Functor.Classes (Eq1, eq1)
 
 import qualified Data.IntMap as IM
 
@@ -25,7 +25,7 @@ data Unique r = Unique (r ()) | UniqueIgnore
 instance Eq1 r => Eq (Unique r) where
   UniqueIgnore == _          = True
   _ == UniqueIgnore          = True
-  Unique ref1 == Unique ref2 = liftEq (==) ref1 ref2
+  Unique ref1 == Unique ref2 = eq1 ref1 ref2
 instance Show (Unique r) where
   show _ = ""
 
@@ -34,7 +34,7 @@ mkUnique = Unique <$> newRef ?refM ()
 
 newtype TRef r = TRef (r (Maybe (Ty r)))
 instance Eq1 r => Eq (TRef r) where
-  TRef r1 == TRef r2 = liftEq (==) r1 r2
+  TRef r1 == TRef r2 = eq1 r1 r2
 instance Show (TRef r) where
   show _ = ""
 

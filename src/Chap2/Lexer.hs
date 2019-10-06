@@ -69,13 +69,7 @@ runMyParserT m s = runParserT m "" s
 runMyParserT' :: (ParserContext IO => Parser IO a)
               -> String
               -> IO (Either ParseErr a)
-runMyParserT' m s = runParserT m' "" s
- where
-  refM = RefM { newRef = newIORef, readRef = readIORef, writeRef = writeIORef }
-  m' = do
-    symbolM <- liftIO $ mkSymbolM <$> mkSymbolRef <*> mkSymbolTable
-    tempRef <- liftIO $ mkTempRef refM
-    let { ?symbolM = symbolM; ?refM = refM; ?tempRef = tempRef } in m
+runMyParserT' m s = contextDataIO >>= \d -> withContextData d $ runMyParserT m s
 
 sc :: Parser m ()
 sc = L.space (space1 <|> void tab) empty blockCmnt

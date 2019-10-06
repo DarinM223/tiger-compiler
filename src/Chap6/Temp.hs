@@ -42,8 +42,6 @@ newTemp' RefM{..} (TempRef ref) = do
 
 newLabel' :: Monad m => RefM r m -> SymbolM m -> TempRef r -> m Label
 newLabel' RefM{..} SymbolM{..} (TempRef ref) = do
-  l <- do
-    tempData <- readRef ref
-    writeRef ref tempData { _label = _label tempData + 1 }
-    return $ _label tempData
-  toSymbol $ "L" ++ show l
+  tempData <- readRef ref
+  writeRef ref tempData { _label = _label tempData + 1 }
+  toSymbol $ "L" ++ show (_label tempData)
