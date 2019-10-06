@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 module Chap3.Parser where
 
@@ -10,37 +11,37 @@ import Control.Monad.Reader
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char
 
-sepCh :: Char -> Parser ()
+sepCh :: Char -> Parser m ()
 sepCh c = sc *> char c *> sc
 
-typedec :: Parser TypeDec'
+typedec :: Monad m => ParserContext m => Parser m (TypeDec' (Ref m))
 typedec = TypeDec'
       <$> getSourcePos
       <*> (rword "type" *> ident)
       <*> (symbol "=" *> ty)
 
-ty :: Parser Ty
+ty :: Monad m => ParserContext m => Parser m (Ty (Ref m))
 ty = getSourcePos >>= \pos
   -> (ArrayTy <$> (rword "array" *> rword "of" *> ident) <*> pure pos)
  <|> (RecordTy <$> (symbol "{" *> sepBy tyfield (sepCh ',') <* symbol "}"))
  <|> (NameTy <$> ident <*> pure pos)
 
-tyfield :: Parser Field
+tyfield :: Monad m => ParserContext m => Parser m (Field (Ref m))
 tyfield = Field
-      <$> getSourcePos
-      <*> ident
-      <*> (symbol ":" *> ident)
-      <*> liftIO mkEscape
+  <$> getSourcePos
+  <*> ident
+  <*> (symbol ":" *> ident)
+  <*> lift mkEscape
 
-vardec :: Parser VarDec'
+vardec :: Monad m => ParserContext m => Parser m (VarDec' (Ref m))
 vardec = VarDec'
-     <$> getSourcePos
-     <*> (rword "var" *> ident)
-     <*> optional (try annot)
-     <*> (symbol ":=" *> expr)
-     <*> liftIO mkEscape
+  <$> getSourcePos
+  <*> (rword "var" *> ident)
+  <*> optional (try annot)
+  <*> (symbol ":=" *> expr)
+  <*> lift mkEscape
 
-fundec :: Parser FunDec
+fundec :: Monad m => ParserContext m => Parser m (FunDec (Ref m))
 fundec = FunDec
      <$> getSourcePos
      <*> (rword "function" *> ident)
@@ -48,7 +49,7 @@ fundec = FunDec
      <*> optional (try annot)
      <*> (symbol "=" *> expr)
 
-dec :: Parser Dec
+dec :: Monad m => ParserContext m => Parser m (Dec (Ref m))
 dec = (FunctionDec <$> sepBy1 fundec sc)
   <|> (VarDec <$> vardec)
   <|> (TypeDec <$> sepBy1 typedec sc)
@@ -67,25 +68,25 @@ dec = (FunctionDec <$> sepBy1 fundec sc)
 --
 -- A -> id A'
 -- A' -> . id A' | [exp] A' | e
-data LFVar = LFVarId !Symbol !Pos LFVar' deriving (Show)
-data LFVar' = LFVarId' !Symbol !Pos LFVar'
-            | LFVarExpr !Exp !Pos LFVar'
-            | LFVarNil
-            deriving (Show)
+data LFVar r = LFVarId !Symbol !Pos (LFVar' r) deriving (Show)
+data LFVar' r = LFVarId' !Symbol !Pos (LFVar' r)
+              | LFVarExpr !(Exp r) !Pos (LFVar' r)
+              | LFVarNil
+              deriving (Show)
 
 -- | Converts the left factored lvalue ast to the proper ast.
-toVar :: LFVar -> Var
+toVar :: LFVar r -> Var r
 toVar (LFVarId sym pos rest) = toVar' (SimpleVar sym pos) rest
  where
   -- TODO(DarinM223): make sure this is building strictly (look into deepseq)
-  toVar' :: Var -> LFVar' -> Var
+  toVar' :: Var r -> LFVar' r -> Var r
   toVar' !build = \case
     LFVarNil                  -> build
     (LFVarId' sym pos rest)   -> toVar' (FieldVar build sym pos) rest
     (LFVarExpr expr pos rest) -> toVar' (SubscriptVar build expr pos) rest
 
 -- | Parses the left factored grammar for lvalues.
-lfvar :: Parser LFVar
+lfvar :: Monad m => ParserContext m => Parser m (LFVar (Ref m))
 lfvar = getSourcePos >>= \pos -> LFVarId <$> ident <*> pure pos <*> lfvar'
  where
   lfvar' = getSourcePos >>= \pos
@@ -95,21 +96,21 @@ lfvar = getSourcePos >>= \pos -> LFVarId <$> ident <*> pure pos <*> lfvar'
                       <*> lfvar')
        <|> pure LFVarNil
 
-var :: Parser Var
+var :: Monad m => ParserContext m => Parser m (Var (Ref m))
 var = toVar <$> lfvar
 
-call :: Parser CallExp'
+call :: Monad m => ParserContext m => Parser m (CallExp' (Ref m))
 call = CallExp'
    <$> getSourcePos
    <*> ident
    <*> (symbol "(" *> sepBy expr (sepCh ',') <* symbol ")")
 
-seq' :: Parser [(Pos, Exp)]
+seq' :: Monad m => ParserContext m => Parser m [(Pos, Exp (Ref m))]
 seq' = sepBy parseExp (sepCh ';')
  where
   parseExp = (,) <$> getSourcePos <*> expr
 
-opExp :: Parser Exp
+opExp :: Monad m => ParserContext m => Parser m (Exp (Ref m))
 opExp = makeExprParser term operators
  where
   term = sc *> term' <* sc
@@ -145,7 +146,7 @@ opExp = makeExprParser term operators
               , [binOp InfixL OrOp (symbol "|")]
               ]
 
-record :: Parser RecordExp'
+record :: Monad m => ParserContext m => Parser m (RecordExp' (Ref m))
 record = RecordExp'
   <$> getSourcePos
   <*> ident
@@ -153,45 +154,45 @@ record = RecordExp'
  where
   recfield = (,,) <$> getSourcePos <*> ident <*> (symbol "=" *> expr)
 
-array :: Parser ArrayExp'
+array :: Monad m => ParserContext m => Parser m (ArrayExp' (Ref m))
 array = ArrayExp'
     <$> getSourcePos
     <*> ident
     <*> (symbol "[" *> expr <* symbol "]")
     <*> (rword "of" *> expr)
 
-assign :: Parser Exp
+assign :: Monad m => ParserContext m => Parser m (Exp (Ref m))
 assign = AssignExp <$> getSourcePos <*> var <*> (symbol ":=" *> expr)
 
-ifExp :: Parser IfExp'
+ifExp :: Monad m => ParserContext m => Parser m (IfExp' (Ref m))
 ifExp = IfExp'
     <$> getSourcePos
     <*> (rword "if" *> expr)
     <*> (rword "then" *> expr)
     <*> optional (rword "else" *> expr)
 
-while :: Parser WhileExp'
+while :: Monad m => ParserContext m => Parser m (WhileExp' (Ref m))
 while = WhileExp'
     <$> getSourcePos
     <*> (rword "while" *> expr)
     <*> (rword "do" *> expr)
 
-for :: Parser ForExp'
+for :: Monad m => ParserContext m => Parser m (ForExp' (Ref m))
 for = ForExp'
   <$> getSourcePos
   <*> (rword "for" *> ident)
-  <*> liftIO mkEscape
+  <*> lift mkEscape
   <*> (symbol ":=" *> expr)
   <*> (rword "to" *> expr)
   <*> (rword "do" *> expr)
 
-letExp :: Parser LetExp'
+letExp :: Monad m => ParserContext m => Parser m (LetExp' (Ref m))
 letExp = LetExp'
      <$> getSourcePos
      <*> (rword "let" *> sepBy1 dec sc)
      <*> (SeqExp <$> (rword "in" *> seq' <* rword "end"))
 
-expr :: Parser Exp
+expr :: Monad m => ParserContext m => Parser m (Exp (Ref m))
 expr = (BreakExp <$> getSourcePos <* rword "break")
    <|> (IfExp <$> ifExp)
    <|> (WhileExp <$> while)
@@ -209,13 +210,11 @@ expr = (BreakExp <$> getSourcePos <* rword "break")
    <|> (SeqExp <$> (symbol "(" *> seq' <* symbol ")"))
    <|> (VarExp <$> var)
 
-annot :: Parser (Pos, Symbol)
+annot :: Monad m => ParserContext m => Parser m (Pos, Symbol)
 annot = (,) <$> getSourcePos <*> (symbol ":" *> ident)
 
-ident :: Parser Symbol
-ident = do
-  config <- lift ask
-  identifier >>= toSymbol' (_symRef config) (_symTable config)
+ident :: Monad m => ParserContext m => Parser m Symbol
+ident = identifier >>= lift . toSymbol ?symbolM
 
-parseExpr :: Parser Exp
+parseExpr :: Monad m => ParserContext m => Parser m (Exp (Ref m))
 parseExpr = sc *> expr <* eof

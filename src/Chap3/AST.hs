@@ -1,127 +1,133 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE RankNTypes #-}
 module Chap3.AST where
 
 import Chap5.Symbol
-import Control.Monad.IO.Class
-import Data.IORef
 
-newtype Escape = Escape { unEscape :: IORef Bool }
-instance Show Escape where
+data RefM ref m = RefM
+  { newRef   :: forall a. a -> m (ref a)
+  , readRef  :: forall a. ref a -> m a
+  , writeRef :: forall a. ref a -> a -> m ()
+  }
+
+newtype Escape ref = Escape { unEscape :: ref Bool }
+instance Show (Escape ref) where
     show _ = ""
 
-mkEscape :: MonadIO m => m Escape
-mkEscape = Escape <$> liftIO (newIORef False)
+mkEscape :: Functor f => (?refM :: RefM r f) => f (Escape r)
+mkEscape = Escape <$> newRef ?refM False
 
-readEscape :: MonadIO m => Escape -> m Bool
-readEscape (Escape ref) = liftIO $ readIORef ref
+readEscape :: (?refM :: RefM r f) => Escape r -> f Bool
+readEscape (Escape ref) = readRef ?refM ref
 
-data Var = SimpleVar Symbol Pos
-         | FieldVar Var Symbol Pos
-         | SubscriptVar Var Exp Pos
-         deriving (Show)
+data Var r = SimpleVar Symbol Pos
+           | FieldVar (Var r) Symbol Pos
+           | SubscriptVar (Var r) (Exp r) Pos
+           deriving (Show)
 
-data Exp = VarExp Var
-         | NilExp
-         | IntExp Int
-         | StringExp Pos String
-         | CallExp CallExp'
-         | OpExp Exp Op Exp Pos
-         | RecordExp RecordExp'
-         | SeqExp [(Pos, Exp)]
-         | AssignExp Pos Var Exp
-         | IfExp IfExp'
-         | WhileExp WhileExp'
-         | ForExp ForExp'
-         | BreakExp Pos
-         | LetExp LetExp'
-         | ArrayExp ArrayExp'
-         deriving (Show)
+data Exp r = VarExp (Var r)
+           | NilExp
+           | IntExp Int
+           | StringExp Pos String
+           | CallExp (CallExp' r)
+           | OpExp (Exp r) Op (Exp r) Pos
+           | RecordExp (RecordExp' r)
+           | SeqExp [(Pos, Exp r)]
+           | AssignExp Pos (Var r) (Exp r)
+           | IfExp (IfExp' r)
+           | WhileExp (WhileExp' r)
+           | ForExp (ForExp' r)
+           | BreakExp Pos
+           | LetExp (LetExp' r)
+           | ArrayExp (ArrayExp' r)
+           deriving (Show)
 
-data CallExp' = CallExp'
+data CallExp' r = CallExp'
   { _pos  :: Pos
   , _func :: Symbol
-  , _args :: [Exp]
+  , _args :: [Exp r]
   } deriving (Show)
 
-data RecordExp' = RecordExp'
+data RecordExp' r = RecordExp'
   { _pos    :: Pos
   , _type   :: Symbol
-  , _fields :: [(Pos, Symbol, Exp)]
+  , _fields :: [(Pos, Symbol, Exp r)]
   } deriving (Show)
 
-data IfExp' = IfExp'
+data IfExp' r = IfExp'
   { _pos   :: Pos
-  , _test  :: Exp
-  , _then' :: Exp
-  , _else' :: Maybe Exp
+  , _test  :: Exp r
+  , _then' :: Exp r
+  , _else' :: Maybe (Exp r)
   } deriving (Show)
 
-data WhileExp' = WhileExp'
+data WhileExp' r = WhileExp'
   { _pos  :: Pos
-  , _test :: Exp
-  , _body :: Exp
+  , _test :: Exp r
+  , _body :: Exp r
   } deriving (Show)
 
-data ForExp' = ForExp'
+data ForExp' r = ForExp'
   { _pos    :: Pos
   , _var    :: Symbol
-  , _escape :: Escape
-  , _lo     :: Exp
-  , _hi     :: Exp
-  , _body   :: Exp
+  , _escape :: Escape r
+  , _lo     :: Exp r
+  , _hi     :: Exp r
+  , _body   :: Exp r
   } deriving (Show)
 
-data LetExp' = LetExp'
+data LetExp' r = LetExp'
   { _pos  :: Pos
-  , _decs :: [Dec]
-  , _body :: Exp
+  , _decs :: [Dec r]
+  , _body :: Exp r
   } deriving (Show)
 
-data ArrayExp' = ArrayExp'
+data ArrayExp' r = ArrayExp'
   { _pos  :: Pos
   , _type :: Symbol
-  , _size :: Exp
-  , _init :: Exp
+  , _size :: Exp r
+  , _init :: Exp r
   } deriving (Show)
 
-data Dec = FunctionDec [FunDec]
-         | VarDec VarDec'
-         | TypeDec [TypeDec']
-         deriving (Show)
+data Dec r = FunctionDec [FunDec r]
+           | VarDec (VarDec' r)
+           | TypeDec [TypeDec' r]
+           deriving (Show)
 
-data Field = Field
+data Field r = Field
   { _pos    :: Pos
   , _name   :: Symbol
   , _type   :: Symbol
-  , _escape :: Escape
+  , _escape :: Escape r
   } deriving (Show)
 
-data FunDec = FunDec
+data FunDec r = FunDec
   { _pos    :: Pos
   , _name   :: Symbol
-  , _params :: [Field]
+  , _params :: [Field r]
   , _result :: Maybe (Pos, Symbol)
-  , _body   :: Exp
+  , _body   :: Exp r
   } deriving (Show)
 
-data VarDec' = VarDec'
+data VarDec' r = VarDec'
   { _pos    :: Pos
   , _name   :: Symbol
   , _type   :: Maybe (Pos, Symbol)
-  , _init   :: Exp
-  , _escape :: Escape
+  , _init   :: Exp r
+  , _escape :: Escape r
   } deriving (Show)
 
-data TypeDec' = TypeDec'
+data TypeDec' r = TypeDec'
   { _pos  :: Pos
   , _name :: Symbol
-  , _ty   :: Ty
+  , _ty   :: Ty r
   } deriving (Show)
 
-data Ty = NameTy Symbol Pos
-        | RecordTy [Field]
-        | ArrayTy Symbol Pos
-        deriving (Show)
+data Ty r = NameTy Symbol Pos
+          | RecordTy [Field r]
+          | ArrayTy Symbol Pos
+          deriving (Show)
 
 data Op = PlusOp | MinusOp | TimesOp | DivideOp
         | EqOp | NeqOp | LtOp | LeOp | GtOp | GeOp

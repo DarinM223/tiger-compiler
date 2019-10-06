@@ -1,12 +1,12 @@
-{-# LANGUAGE ExplicitForAll #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 module Chap5.Table where
 
+import Chap3.AST (RefM (..))
 import Chap5.Symbol
 import Chap6.Translate
-import Control.Monad.Reader
-import Data.IORef
+import Data.Functor.Classes (Eq1 (liftEq))
 
 import qualified Data.IntMap as IM
 
@@ -21,51 +21,53 @@ enter = IM.insert . symbolValue
 look :: Symbol -> Table a -> Maybe a
 look = IM.lookup . symbolValue
 
-data Unique = Unique (IORef ())
-            | UniqueIgnore
-instance Eq Unique where
+data Unique r = Unique (r ()) | UniqueIgnore
+instance Eq1 r => Eq (Unique r) where
   UniqueIgnore == _          = True
   _ == UniqueIgnore          = True
-  Unique ref1 == Unique ref2 = ref1 == ref2
-instance Show Unique where
+  Unique ref1 == Unique ref2 = liftEq (==) ref1 ref2
+instance Show (Unique r) where
   show _ = ""
 
-mkUnique :: MonadIO m => m Unique
-mkUnique = liftIO $ Unique <$> newIORef ()
+mkUnique :: Functor m => (?refM :: RefM r m) => m (Unique r)
+mkUnique = Unique <$> newRef ?refM ()
 
-newtype TRef = TRef (IORef (Maybe Ty)) deriving (Eq)
-instance Show TRef where
+newtype TRef r = TRef (r (Maybe (Ty r)))
+instance Eq1 r => Eq (TRef r) where
+  TRef r1 == TRef r2 = liftEq (==) r1 r2
+instance Show (TRef r) where
   show _ = ""
 
-mkTRef :: MonadIO m => m TRef
-mkTRef = liftIO $ TRef <$> newIORef Nothing
+mkTRef :: Functor m => (?refM :: RefM r m) => m (TRef r)
+mkTRef = TRef <$> newRef ?refM Nothing
 
-readTRef :: MonadIO m => TRef -> m (Maybe Ty)
-readTRef (TRef ref) = liftIO $ readIORef ref
+readTRef :: (?refM :: RefM r m) => TRef r -> m (Maybe (Ty r))
+readTRef (TRef ref) =  readRef ?refM ref
 
-writeTRef :: MonadIO m => TRef -> Ty -> m ()
-writeTRef (TRef ref) ty = liftIO $ writeIORef ref $ Just ty
+writeTRef :: (?refM :: RefM r m) => TRef r -> Ty r -> m ()
+writeTRef (TRef ref) ty = writeRef ?refM ref $ Just ty
 
-data Ty = TInt
-        | TString
-        | TRecord [(Symbol, Ty)] Unique
-        | TArray Ty Unique
-        | TNil
-        | TUnit
-        | TName Symbol TRef
-        deriving (Show, Eq)
+data Ty r = TInt
+          | TString
+          | TRecord [(Symbol, Ty r)] (Unique r)
+          | TArray (Ty r) (Unique r)
+          | TNil
+          | TUnit
+          | TName Symbol (TRef r)
+          deriving (Show, Eq)
 
-data EnvEntry frame access = VarEntry (Access frame access) Ty
-                           | FunEntry (Level frame) Symbol [Ty] Ty
+data EnvEntry ref frame access
+  = VarEntry (Access frame access) (Ty ref)
+  | FunEntry (Level frame) Symbol [Ty ref] (Ty ref)
 
-type TEnv = Table Ty
-type VEnv frame access = Table (EnvEntry frame access)
+type TEnv ref = Table (Ty ref)
+type VEnv ref frame access = Table (EnvEntry ref frame access)
 
-mkEnvs :: forall frame access m
-        . MonadIO m
+mkEnvs :: forall r frame access m
+        . Monad m
        => SymbolM m
        -> TransM frame access m
-       -> m (TEnv, VEnv frame access)
+       -> m (TEnv r, VEnv r frame access)
 mkEnvs symM transM = (,) <$> convertBase tenvBase <*> (venvBase >>= convertBase)
  where
   tenvBase = [("int", TInt), ("string", TString)]

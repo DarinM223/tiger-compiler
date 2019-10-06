@@ -2,9 +2,8 @@
 {-# LANGUAGE RecordWildCards #-}
 module Chap6.Temp where
 
+import Chap3.AST
 import Chap5.Symbol
-import Control.Monad.Reader
-import Data.IORef
 
 newtype Temp = Temp { unTemp :: Int } deriving (Eq, Num)
 instance Show Temp where
@@ -22,29 +21,29 @@ data TempData = TempData
   , _label :: Int
   }
 
-newtype TempRef = TempRef (IORef TempData)
+newtype TempRef r = TempRef (r TempData)
 
-mkTempRef :: MonadIO m => m TempRef
-mkTempRef = liftIO $ TempRef <$> newIORef TempData
+mkTempRef :: Functor m => RefM r m -> m (TempRef r)
+mkTempRef refM = TempRef <$> newRef refM TempData
   { _temp = 100, _label = 0 }
 
-mkTempM :: MonadIO m => SymbolM m -> TempRef -> TempM m
-mkTempM symM ref = TempM
-  { newTemp    = newTemp' ref
-  , newLabel   = newLabel' symM ref
+mkTempM :: Monad m => RefM r m -> SymbolM m -> TempRef r -> TempM m
+mkTempM refM symM ref = TempM
+  { newTemp    = newTemp' refM ref
+  , newLabel   = newLabel' refM symM ref
   , namedLabel = toSymbol symM
   }
 
-newTemp' :: MonadIO m => TempRef -> m Temp
-newTemp' (TempRef ref) = liftIO $ do
-  tempData <- readIORef ref
-  writeIORef ref tempData { _temp = _temp tempData + 1 }
+newTemp' :: Monad m => RefM r m -> TempRef r -> m Temp
+newTemp' RefM{..} (TempRef ref) = do
+  tempData <- readRef ref
+  writeRef ref tempData { _temp = _temp tempData + 1 }
   return $ _temp tempData
 
-newLabel' :: MonadIO m => SymbolM m -> TempRef -> m Label
-newLabel' SymbolM{..} (TempRef ref) = do
-  l <- liftIO $ do
-    tempData <- readIORef ref
-    writeIORef ref tempData { _label = _label tempData + 1 }
+newLabel' :: Monad m => RefM r m -> SymbolM m -> TempRef r -> m Label
+newLabel' RefM{..} SymbolM{..} (TempRef ref) = do
+  l <- do
+    tempData <- readRef ref
+    writeRef ref tempData { _label = _label tempData + 1 }
     return $ _label tempData
   toSymbol $ "L" ++ show l
