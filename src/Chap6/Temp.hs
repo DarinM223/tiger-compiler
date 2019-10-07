@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module Chap6.Temp where
 
-import Chap3.AST
+import Chap2.Ref
 import Chap5.Symbol
 
 newtype Temp = Temp { unTemp :: Int } deriving (Eq, Num)

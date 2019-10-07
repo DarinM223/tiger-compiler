@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 module Chap5.Table where
 
-import Chap3.AST (RefM (..))
+import Chap2.Ref (RefM (..))
 import Chap5.Symbol
 import Chap6.Translate
 import Data.Functor.Classes (Eq1, eq1)

@@ -3,13 +3,8 @@
 {-# LANGUAGE RankNTypes #-}
 module Chap3.AST where
 
+import Chap2.Ref
 import Chap5.Symbol
-
-data RefM ref m = RefM
-  { newRef   :: forall a. a -> m (ref a)
-  , readRef  :: forall a. ref a -> m a
-  , writeRef :: forall a. ref a -> a -> m ()
-  }
 
 newtype Escape ref = Escape { unEscape :: ref Bool }
 instance Show (Escape ref) where

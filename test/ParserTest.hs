@@ -3,6 +3,7 @@
 module ParserTest (tests) where
 
 import Chap2.Lexer
+import Chap2.Ref
 import Chap3.AST
 import Chap3.Parser
 import NeatInterpolation

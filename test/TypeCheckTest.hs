@@ -3,7 +3,7 @@
 module TypeCheckTest (tests) where
 
 import Control.Monad.Catch
-import Chap2.Lexer (Ref)
+import Chap2.Ref (Ref)
 import Chap5.Semant
 import Chap5.Symbol
 import Chap5.Table hiding (look)

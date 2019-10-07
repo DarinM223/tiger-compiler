@@ -4,6 +4,7 @@
 module Chap3.Parser where
 
 import Chap2.Lexer
+import Chap2.Ref
 import Chap3.AST
 import Chap5.Symbol
 import Control.Monad.Combinators.Expr

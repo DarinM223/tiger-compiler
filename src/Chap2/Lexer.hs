@@ -1,39 +1,19 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
 module Chap2.Lexer where
 
 import Control.Monad (void)
-import Control.Monad.Reader
-import Chap3.AST
+import Chap2.Ref
 import Chap5.Symbol
 import Chap6.Temp
 import Data.Char (chr, ord)
-import Data.Functor.Classes (Eq1 (liftEq))
 import Data.Maybe (fromJust)
 import Data.Void
 import Text.Megaparsec
 import Text.Megaparsec.Char
-import Unsafe.Coerce (unsafeCoerce)
 
-import qualified Data.IORef as IORef
 import qualified Text.Megaparsec.Char.Lexer as L
-
-newtype IORef a = IORef { unIORef :: IORef.IORef a } deriving Eq
-newIORef v = IORef <$> IORef.newIORef v
-readIORef (IORef ref) = IORef.readIORef ref
-writeIORef (IORef ref) v = IORef.writeIORef ref v
-
-instance Eq1 IORef where
-  -- NOTE(DarinM223): uses unsafeCoerce here because
-  -- Eq for IORef only checks for pointer equality
-  -- so you can compare IORef a and IORef b even though
-  -- they are different types.
-  liftEq _ f1 f2 = f1 == unsafeCoerce f2
-
-type family Ref (m :: * -> *) :: * -> *
-type instance Ref IO = IORef
 
 type Parser m = ParsecT Void String m
 type ParseErr = ParseErrorBundle String Void
@@ -50,8 +30,8 @@ data ParserContextData m = ParserContextData
 
 contextDataIO :: IO (ParserContextData IO)
 contextDataIO = do
-  symbolM <- liftIO $ mkSymbolM <$> mkSymbolRef <*> mkSymbolTable
-  tempRef <- liftIO $ mkTempRef refM
+  symbolM <- mkSymbolM refM <$> symbolTableMIO <*> mkSymbolRef refM
+  tempRef <- mkTempRef refM
   return $ ParserContextData symbolM refM tempRef
  where
   refM = RefM { newRef = newIORef, readRef = readIORef, writeRef = writeIORef }

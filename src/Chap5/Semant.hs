@@ -15,15 +15,13 @@ import Control.Monad (forM_, void, when)
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Chap2.Lexer
-  ( IORef
-  , Parser
+  ( Parser
   , ParserContext
-  , Ref
   , contextDataIO
   , runMyParserT
   , withContextData
   )
-import Chap3.AST (RefM (..))
+import Chap2.Ref (IORef, Ref, RefM (..))
 import Chap3.Parser (parseExpr)
 import Chap5.Symbol
 import Chap5.Table
