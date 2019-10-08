@@ -1,6 +1,8 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
 module Chap3.AST where
 
 import Chap2.Ref
@@ -128,3 +130,78 @@ data Op = PlusOp | MinusOp | TimesOp | DivideOp
         | EqOp | NeqOp | LtOp | LeOp | GtOp | GeOp
         | AndOp | OrOp
         deriving (Show, Eq)
+
+convertEscape :: Functor m
+              => (r Bool -> m (r' Bool))
+              -> Escape r
+              -> m (Escape r')
+convertEscape f (Escape ref) = Escape <$> f ref
+
+convertExp :: Applicative m => (r Bool -> m (r' Bool)) -> Exp r -> m (Exp r')
+convertExp f = \case
+  VarExp var      -> VarExp <$> convertVar f var
+  NilExp          -> pure NilExp
+  StringExp pos s -> pure $ StringExp pos s
+  IntExp i        -> pure $ IntExp i
+  CallExp (CallExp' pos fn args) ->
+    CallExp . CallExp' pos fn <$> traverse (convertExp f) args
+  OpExp exp1 op exp2 pos ->
+    OpExp <$> convertExp f exp1 <*> pure op <*> convertExp f exp2 <*> pure pos
+  RecordExp (RecordExp' pos ty fs) ->
+    RecordExp . RecordExp' pos ty
+      <$> traverse (\(p, s, e) -> (p, s,) <$> convertExp f e) fs
+  SeqExp exps ->
+    SeqExp <$> traverse (\(p, e) -> (p,) <$> convertExp f e) exps
+  AssignExp pos var exp ->
+    AssignExp pos <$> convertVar f var <*> convertExp f exp
+  IfExp (IfExp' pos test thn els) ->
+    fmap IfExp $ IfExp' pos
+      <$> convertExp f test <*> convertExp f thn <*> traverse (convertExp f) els
+  WhileExp (WhileExp' pos test body) ->
+    fmap WhileExp $ WhileExp' pos <$> convertExp f test <*>  convertExp f body
+  ForExp (ForExp' pos var esc lo hi body) ->
+    fmap ForExp $ ForExp' pos var
+      <$> convertEscape f esc
+      <*> convertExp f lo
+      <*> convertExp f hi
+      <*> convertExp f body
+  BreakExp pos -> pure $ BreakExp pos
+  LetExp (LetExp' pos decs body) ->
+    fmap LetExp $ LetExp' pos
+      <$> traverse (convertDec f) decs <*> convertExp f body
+  ArrayExp (ArrayExp' pos ty size init) ->
+    fmap ArrayExp $ ArrayExp' pos ty <$> convertExp f size <*> convertExp f init
+
+convertVar :: Applicative m => (r Bool -> m (r' Bool)) -> Var r -> m (Var r')
+convertVar f = \case
+  SimpleVar sym pos -> pure $ SimpleVar sym pos
+  FieldVar var sym pos ->
+    FieldVar <$> convertVar f var <*> pure sym <*> pure pos
+  SubscriptVar var exp pos ->
+    SubscriptVar <$> convertVar f var <*> convertExp f exp <*> pure pos
+
+convertDec :: Applicative m => (r Bool -> m (r' Bool)) -> Dec r -> m (Dec r')
+convertDec f = \case
+  FunctionDec funDecs -> FunctionDec <$> traverse convertFunDec funDecs
+  VarDec (VarDec' pos name ty init esc) ->
+    fmap VarDec $ VarDec' pos name ty
+      <$> convertExp f init
+      <*> convertEscape f esc
+  TypeDec tys -> TypeDec <$> traverse convertTypeDec tys
+ where
+  convertFunDec (FunDec pos name params result body) = FunDec pos name
+    <$> traverse (convertField f) params <*> pure result <*> convertExp f body
+  convertTypeDec (TypeDec' pos name ty) = TypeDec' pos name <$> convertTy f ty
+
+convertField :: Applicative m
+             => (r Bool -> m (r' Bool))
+             -> Field r
+             -> m (Field r')
+convertField f (Field pos name ty esc) =
+  Field pos name ty <$> convertEscape f esc
+
+convertTy :: Applicative m => (r Bool -> m (r' Bool)) -> Ty r -> m (Ty r')
+convertTy f = \case
+  NameTy sym pos  -> pure $ NameTy sym pos
+  ArrayTy sym pos -> pure $ ArrayTy sym pos
+  RecordTy fields -> RecordTy <$> traverse (convertField f) fields

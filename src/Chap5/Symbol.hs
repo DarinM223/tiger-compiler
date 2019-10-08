@@ -14,8 +14,8 @@ data SymbolTableM k v m = SymbolTableM
   , tableToList :: m [(k, v)]
   }
 
-symbolTableMIO :: IO (SymbolTableM String Int IO)
-symbolTableMIO = do
+mkSymbolTableM :: IO (SymbolTableM String Int IO)
+mkSymbolTableM = do
   table <- H.new :: IO (H.BasicHashTable k v)
   return SymbolTableM
     { insertTable = H.insert table

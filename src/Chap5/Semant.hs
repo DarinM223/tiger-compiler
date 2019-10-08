@@ -17,7 +17,7 @@ import Control.Monad.Reader
 import Chap2.Lexer
   ( Parser
   , ParserContext
-  , contextDataIO
+  , mkContextData
   , runMyParserT
   , withContextData
   )
@@ -382,7 +382,7 @@ runExp tenv venv exp = do
   transExp exp
 
 testTy :: String -> IO (ExpTy IORef)
-testTy text = contextDataIO >>= \d -> withContextData d $ do
+testTy text = mkContextData >>= \d -> withContextData d $ do
   let ?tempM = mkTempM ?refM ?symbolM ?tempRef
   let ?transM = mkTranslateM ?tempM (Mips.mkFrameM ?tempM)
   (tenv, venv) <- mkEnvs ?symbolM ?transM
@@ -391,7 +391,7 @@ testTy text = contextDataIO >>= \d -> withContextData d $ do
     Right exp -> runExp tenv venv exp
 
 testTySyms :: String -> IO (HM.HashMap String Int, (ExpTy IORef))
-testTySyms text = contextDataIO >>= \d -> withContextData d $ do
+testTySyms text = mkContextData >>= \d -> withContextData d $ do
   let ?tempM = mkTempM ?refM ?symbolM ?tempRef
   let ?transM = mkTranslateM ?tempM (Mips.mkFrameM ?tempM)
   (tenv, venv) <- mkEnvs ?symbolM ?transM

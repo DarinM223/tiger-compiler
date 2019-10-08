@@ -28,9 +28,9 @@ data ParserContextData m = ParserContextData
   , tempRef :: TempRef (Ref m)
   }
 
-contextDataIO :: IO (ParserContextData IO)
-contextDataIO = do
-  symbolM <- mkSymbolM refM <$> symbolTableMIO <*> mkSymbolRef refM
+mkContextData :: IO (ParserContextData IO)
+mkContextData = do
+  symbolM <- mkSymbolM refM <$> mkSymbolTableM <*> mkSymbolRef refM
   tempRef <- mkTempRef refM
   return $ ParserContextData symbolM refM tempRef
  where
@@ -49,7 +49,7 @@ runMyParserT m s = runParserT m "" s
 runMyParserT' :: (ParserContext IO => Parser IO a)
               -> String
               -> IO (Either ParseErr a)
-runMyParserT' m s = contextDataIO >>= \d -> withContextData d $ runMyParserT m s
+runMyParserT' m s = mkContextData >>= \d -> withContextData d $ runMyParserT m s
 
 sc :: Parser m ()
 sc = L.space (space1 <|> void tab) empty blockCmnt
