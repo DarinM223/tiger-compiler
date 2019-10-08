@@ -1,54 +1,74 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE RankNTypes #-}
 module Chap2.Lexer where
 
 import Control.Monad (void)
-import Control.Monad.Reader
+import Chap2.Ref
 import Chap5.Symbol
 import Chap6.Temp
-import Data.Maybe (fromJust)
 import Data.Char (chr, ord)
+import Data.Maybe (fromJust)
 import Data.Void
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
 import qualified Text.Megaparsec.Char.Lexer as L
 
-data Config = Config
-  { _symRef   :: SymbolRef
-  , _symTable :: SymbolTable
-  , _tempRef  :: TempRef
+type Parser m = ParsecT Void String m
+type ParseErr = ParseErrorBundle String Void
+type ParserContext m = ( ?symbolM :: SymbolM m
+                       , ?refM    :: RefM (Ref m) m
+                       , ?tempRef :: TempRef (Ref m)
+                       )
+
+data ParserContextData m = ParserContextData
+  { symbolM :: SymbolM m
+  , refM    :: RefM (Ref m) m
+  , tempRef :: TempRef (Ref m)
   }
 
-mkConfig :: IO Config
-mkConfig = Config <$> mkSymbolRef <*> mkSymbolTable <*> mkTempRef
+mkContextData :: IO (ParserContextData IO)
+mkContextData = do
+  symbolM <- mkSymbolM refM <$> mkSymbolTableM <*> mkSymbolRef refM
+  tempRef <- mkTempRef refM
+  return $ ParserContextData symbolM refM tempRef
+ where
+  refM = RefM { newRef = newIORef, readRef = readIORef, writeRef = writeIORef }
 
-type Parser = ParsecT Void String (ReaderT Config IO)
-type ParseErr = ParseErrorBundle String Void
+withContextData :: ParserContextData m -> (ParserContext m => m a) -> m a
+withContextData c f =
+  let { ?symbolM = symbolM c; ?refM = refM c; ?tempRef = tempRef c } in f
 
-runMyParserT :: Parser a
+runMyParserT :: ParserContext IO
+             => (ParserContext IO => Parser IO a)
              -> String
              -> IO (Either ParseErr a)
-runMyParserT m s = do
-  config <- mkConfig
-  flip runReaderT config $ runParserT m "" s
+runMyParserT m s = runParserT m "" s
 
-sc :: Parser ()
+runMyParserT' :: (ParserContext IO => Parser IO a)
+              -> String
+              -> IO (Either ParseErr a)
+runMyParserT' m s = mkContextData >>= \d -> withContextData d $ runMyParserT m s
+
+sc :: Parser m ()
 sc = L.space (space1 <|> void tab) empty blockCmnt
  where blockCmnt = L.skipBlockCommentNested "/*" "*/"
 
-lexeme :: Parser a -> Parser a
+lexeme :: Parser m a -> Parser m a
 lexeme = L.lexeme sc
 
-symbol :: String -> Parser String
+symbol :: String -> Parser m String
 symbol = L.symbol sc
 
 rws :: [String]
 rws = [ "while", "for", "to", "break", "let", "in", "end", "function", "var"
       , "type", "array", "if", "then", "else", "do", "of", "nil" ]
 
-rword :: String -> Parser ()
+rword :: String -> Parser m ()
 rword w = (lexeme . try) (string w *> notFollowedBy alphaNumChar)
 
-identifier :: Parser String
+identifier :: Parser m String
 identifier = (lexeme . try) (letters >>= check)
  where
   letters = (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
@@ -56,17 +76,17 @@ identifier = (lexeme . try) (letters >>= check)
     | s `elem` rws = fail $ "keyword " ++ show s ++ " cannot be an identifier"
     | otherwise    = return s
 
-eol' :: Parser ()
+eol' :: Parser m ()
 eol' = void (string "\r\n")
    <|> void (string "\n\r")
    <|> void (char '\r')
    <|> void (char '\n')
    <?> "end of line"
 
-integer :: Parser Int
+integer :: Parser m Int
 integer = L.decimal
 
-string'' :: Parser String
+string'' :: Parser m String
 string'' = char '"' *> many character <* char '"'
  where
   character = escape <|> satisfy (/= '\"')
@@ -91,5 +111,5 @@ singleEscChars = "nt\\\""
 escapeLookupTable :: [(Char, Char)]
 escapeLookupTable = [('n', '\n'), ('t', '\t'), ('\\', '\\'), ('\"', '\"')]
 
-whileParser :: Parser [String]
+whileParser :: Parser m [String]
 whileParser = sc *> sepBy identifier (sc *> char ',' *> sc) <* eof

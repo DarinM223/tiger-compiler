@@ -1,6 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 module Chap5.Semant
   ( ExpTy (..)
@@ -10,26 +12,32 @@ module Chap5.Semant
   ) where
 
 import Control.Monad (forM_, void, when)
-import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Monad.Reader
-import Chap2.Lexer (Config (..), mkConfig)
+import Chap2.Lexer
+  ( Parser
+  , ParserContext
+  , mkContextData
+  , runMyParserT
+  , withContextData
+  )
+import Chap2.Ref (IORef, Ref, RefM (..))
 import Chap3.Parser (parseExpr)
 import Chap5.Symbol
 import Chap5.Table
-import Chap6.Temp (mkTempM, TempM (TempM, namedLabel))
+import Chap6.Temp (mkTempM, TempM (namedLabel))
 import Chap6.Translate
-import Data.IORef
+import Data.Functor.Classes (Eq1)
 import Data.Maybe (fromMaybe)
 import Data.Foldable (foldlM, foldl')
-import Text.Megaparsec (runParserT)
 import qualified Chap3.AST as AST
 import qualified Chap6.MipsFrame as Mips
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.HashMap.Strict as HM
 
-data ExpTy = ExpTy Exp Ty deriving (Show, Eq)
+data ExpTy r = ExpTy Exp (Ty r) deriving (Show, Eq)
+
 data OpType = Arithmetic -- ^ Operation over two integers
             | Comparison -- ^ Operation over integers or strings
             | Equality   -- ^ Operations over any two equal types
@@ -38,20 +46,21 @@ data OpType = Arithmetic -- ^ Operation over two integers
 data Err = Err Pos String deriving (Show)
 instance Exception Err
 
-data Context frame access m = Context
-  { symbolM :: SymbolM m
-  , transM  :: TransM frame access m
-  , gLevel  :: Level frame
-  , gTenv   :: TEnv
-  , gVenv   :: VEnv frame access
-  , gBreak  :: Bool
-  }
+type Context frame access m
+  = ( ?symbolM :: SymbolM m
+    , ?transM  :: TransM frame access m
+    , ?refM    :: RefM (Ref m) m
+    , ?level   :: Level frame
+    , ?tenv    :: TEnv (Ref m)
+    , ?venv    :: VEnv (Ref m) frame access
+    , ?break   :: Bool
+    )
 
-type SemantT frame access m a = ReaderT (Context frame access m) m a
+type Semant f a m = (MonadThrow m, Eq1 (Ref m), Context f a m)
 
-transVar :: (MonadIO m, MonadThrow m) => AST.Var -> SemantT f a m ExpTy
-transVar var = ask >>= \Context{..} -> case var of
-  AST.SimpleVar id pos -> case look id gVenv of
+transVar :: Semant f a m => AST.Var (Ref m) -> m (ExpTy (Ref m))
+transVar = \case
+  AST.SimpleVar id pos -> case look id ?venv of
     Just (VarEntry _ ty) -> ExpTy EUnit <$> actualTy ty
     _ -> throwM $ Err pos $ "undefined variable: " ++ fromSymbol id
   AST.FieldVar var' id pos -> do
@@ -70,13 +79,15 @@ transVar var = ask >>= \Context{..} -> case var of
       _           -> throwM $ Err pos "lvalue not an array type"
 
 -- | Trace through TName types to their underlying definitions.
-actualTy :: MonadIO m => Ty -> m Ty
-actualTy ty@(TName _ (TRef ref)) = liftIO (readIORef ref) >>= \case
+actualTy :: Monad m => (?refM :: RefM r m) => Ty r -> m (Ty r)
+actualTy ty@(TName _ (TRef ref)) = readRef ?refM ref >>= \case
   Just ty -> actualTy ty
   Nothing -> return ty
 actualTy ty = return ty
 
-checkTy :: (MonadIO m, MonadThrow m) => Pos -> Ty -> Ty -> m ()
+checkTy :: (MonadThrow m, Eq1 r)
+        => (?refM :: RefM r m)
+        => Pos -> Ty r -> Ty r -> m ()
 checkTy pos ty ty' = do
   cty <- actualTy ty
   cty' <- actualTy ty'
@@ -84,14 +95,14 @@ checkTy pos ty ty' = do
     throwM $ Err pos $ "type mismatch: expected: "
                     ++ show ty ++ " got: " ++ show ty'
 
-checkDup :: (MonadIO m, MonadThrow m) => [(Symbol, Pos)] -> m ()
+checkDup :: MonadThrow m => [(Symbol, Pos)] -> m ()
 checkDup = void . foldlM go IS.empty
  where
   go set (Symbol (name, id), pos)
     | IS.member id set = throwM $ Err pos $ "Duplicate symbol: " ++ name
     | otherwise        = return $ IS.insert id set
 
-lookTy :: MonadThrow m => Pos -> Symbol -> TEnv -> m Ty
+lookTy :: MonadThrow m => Pos -> Symbol -> TEnv r -> m (Ty r)
 lookTy pos tySym tenv = case look tySym tenv of
   Just ty -> return ty
   _       -> throwM $ Err pos $ "type " ++ show tySym ++ " not found"
@@ -111,7 +122,7 @@ opTypeFromOp = \case
   AST.GtOp     -> Comparison
   AST.GeOp     -> Comparison
 
-checkOpType :: OpType -> Ty -> Bool
+checkOpType :: Eq1 r => OpType -> Ty r -> Bool
 checkOpType Arithmetic ty = ty == TInt
 checkOpType Comparison ty = ty == TInt || ty == TString
 checkOpType Equality ty   = case ty of
@@ -122,14 +133,14 @@ checkOpType Equality ty   = case ty of
   TNil        -> True
   _           -> False
 
-transExp :: (MonadIO m, MonadThrow m) => AST.Exp -> SemantT f a m ExpTy
-transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
+transExp :: Semant f a m => AST.Exp (Ref m) -> m (ExpTy (Ref m))
+transExp = \case
   AST.NilExp        -> return $ ExpTy EUnit TNil
   AST.StringExp _ _ -> return $ ExpTy EUnit TString
   AST.IntExp _      -> return $ ExpTy EUnit TInt
   AST.VarExp var    -> transVar var
 
-  AST.BreakExp pos -> if gBreak
+  AST.BreakExp pos -> if ?break
     then return $ ExpTy EUnit TUnit
     else throwM $ Err pos "Break statement not inside enclosing loop"
 
@@ -149,13 +160,13 @@ transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
 
   AST.WhileExp (AST.WhileExp' pos test body) -> do
     ExpTy _ testTy <- transExp test
-    ExpTy _ bodyTy <- local (\c -> c { gBreak = True }) (transExp body)
+    ExpTy _ bodyTy <- let ?break = True in transExp body
     checkTy pos TInt testTy
     checkTy pos TUnit bodyTy
     return $ ExpTy EUnit bodyTy
 
   AST.ForExp (AST.ForExp' pos varSym escRef lo hi body) -> do
-    limitSym <- lift $ toSymbol "limit"
+    limitSym <- toSymbol ?symbolM "limit"
     let ivar     = AST.SimpleVar varSym pos
         limitvar = AST.SimpleVar limitSym pos
     limitEscRef <- AST.mkEscape
@@ -172,7 +183,7 @@ transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
     transExp $ AST.LetExp $ AST.LetExp' pos decs loop
 
   AST.RecordExp (AST.RecordExp' pos tySym fields) -> do
-    ty <- lookTy pos tySym gTenv >>= actualTy
+    ty <- lookTy pos tySym ?tenv >>= actualTy
     case ty of
       TRecord fieldTys _ -> do
         fieldTys' <- traverse trField fields
@@ -181,7 +192,7 @@ transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
       _ -> throwM $ Err pos $ "type " ++ show tySym ++ " is not a record"
 
   AST.ArrayExp (AST.ArrayExp' pos tySym size init) -> do
-    arrayTy <- lookTy pos tySym gTenv >>= actualTy
+    arrayTy <- lookTy pos tySym ?tenv >>= actualTy
     case arrayTy of
       TArray ty _ -> do
         ExpTy _ sizeTy <- transExp size
@@ -194,7 +205,7 @@ transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
   AST.SeqExp exps ->
     foldlM (\_ (_, exp) -> transExp exp) (ExpTy EUnit TNil) exps
 
-  AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym gVenv of
+  AST.CallExp (AST.CallExp' pos fnSym args) -> case look fnSym ?venv of
     Just (FunEntry _ _ tys rt) -> do
       tys' <- fmap (\(ExpTy _ ty) -> ty) <$> traverse transExp args
       if tys == tys'
@@ -205,10 +216,10 @@ transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
 
   AST.LetExp (AST.LetExp' _ decs body) -> do
     (tenv', venv') <- foldlM
-      (\(!tenv, !venv) dec -> local (\c -> c { gTenv = tenv, gVenv = venv })
-                            $ transDec dec)
-      (gTenv, gVenv) decs
-    local (\c -> c { gTenv = tenv', gVenv = venv' }) $ transExp body
+      (\(!tenv, !venv) dec -> let { ?tenv = tenv; ?venv = venv }
+                              in transDec dec)
+      (?tenv, ?venv) decs
+    let { ?tenv = tenv'; ?venv = venv' } in transExp body
 
   AST.OpExp left op right pos -> do
     ExpTy _ tyleft <- transExp left
@@ -222,10 +233,10 @@ transExp exp = ask >>= \Context{symbolM = SymbolM{..}, ..} -> case exp of
  where
   trField (pos, sym, exp) = (\(ExpTy _ ty) -> (pos, sym, ty)) <$> transExp exp
 
-matchTys :: (MonadIO m, MonadThrow m)
+matchTys :: Semant f a m
          => Pos
-         -> [(Symbol, Ty)]
-         -> [(Pos, Symbol, Ty)]
+         -> [(Symbol, Ty (Ref m))]
+         -> [(Pos, Symbol, Ty (Ref m))]
          -> m ()
 matchTys pos l1 l2
   | length l1 /= length l2 = throwM $ Err pos "Different parameter sizes"
@@ -240,22 +251,23 @@ matchTys pos l1 l2
   buildMap = foldl' append IM.empty
   append map (sym, ty) = IM.insert (symbolValue sym) ty map
 
-transDec :: (MonadIO m, MonadThrow m)
-         => AST.Dec -> SemantT frame access m (TEnv, VEnv frame access)
-transDec dec = ask >>= \Context{transM = TranslateM{..}, ..} -> case dec of
+transDec :: Semant frame access m
+         => AST.Dec (Ref m)
+         -> m (TEnv (Ref m), VEnv (Ref m) frame access)
+transDec = \case
   AST.VarDec (AST.VarDec' _ name Nothing init escapeRef) -> do
     ExpTy _ ty <- transExp init
     escape <- AST.readEscape escapeRef
-    access <- lift $ allocLocal gLevel escape
-    return (gTenv, enter name (VarEntry access ty) gVenv)
+    access <- allocLocal ?transM ?level escape
+    return (?tenv, enter name (VarEntry access ty) ?venv)
 
   AST.VarDec (AST.VarDec' pos name (Just (pos', tySym)) init escapeRef) -> do
-    ty <- lookTy pos' tySym gTenv
+    ty <- lookTy pos' tySym ?tenv
     ExpTy _ ty' <- transExp init
     checkTy pos ty ty'
     escape <- AST.readEscape escapeRef
-    access <- lift $ allocLocal gLevel escape
-    return (gTenv, enter name (VarEntry access ty) gVenv)
+    access <- allocLocal ?transM ?level escape
+    return (?tenv, enter name (VarEntry access ty) ?venv)
 
   AST.TypeDec decs -> do
     checkDup $ fmap (\(AST.TypeDec' pos name _) -> (name, pos)) decs
@@ -271,7 +283,7 @@ transDec dec = ask >>= \Context{transM = TranslateM{..}, ..} -> case dec of
     tenv' <- foldlM
       (\env (AST.TypeDec' _ name _) ->
         enter name <$> (TName <$> pure name <*> mkTRef) <*> pure env)
-      gTenv
+      ?tenv
       decs
 
     -- Second pass: if left side symbol is a TName, then translate
@@ -290,7 +302,7 @@ transDec dec = ask >>= \Context{transM = TranslateM{..}, ..} -> case dec of
 
     -- Third pass: check declarations for cycles.
     mapM_ (\(AST.TypeDec' pos name _) -> checkCycles pos name tenv') decs
-    return (tenv', gVenv)
+    return (tenv', ?venv)
 
   AST.FunctionDec decs -> do
     checkDup $ fmap (\(AST.FunDec pos name _ _ _) -> (name, pos)) decs
@@ -299,9 +311,9 @@ transDec dec = ask >>= \Context{transM = TranslateM{..}, ..} -> case dec of
     venv' <- foldlM
       (\env (AST.FunDec _ name params rt _)
         ->  enter name
-        <$> lift (funHeader newLevel gTenv name gLevel params rt)
+        <$> funHeader (newLevel ?transM) ?tenv name ?level params rt
         <*> pure env)
-      gVenv
+      ?venv
       decs
 
     -- Second pass: for each declaration, insert the parameter
@@ -314,15 +326,15 @@ transDec dec = ask >>= \Context{transM = TranslateM{..}, ..} -> case dec of
       venv'' <- foldlM
         (\env (AST.Field _ name ty _, access)
           ->  enter name
-          <$> (VarEntry access <$> lookTy pos ty gTenv)
+          <$> (VarEntry access <$> lookTy pos ty ?tenv)
           <*> pure env)
         venv'
-        (zip params (levelFormals newlevel))
-      rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty gTenv) rt
-      ExpTy _ ty <- local (\c -> c { gLevel = newlevel, gVenv = venv'' })
-                  $ transExp body
+        (zip params (levelFormals ?transM newlevel))
+      rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty ?tenv) rt
+      ExpTy _ ty <- let { ?level = newlevel; ?venv = venv'' }
+                    in transExp body
       checkTy pos rty ty
-    return (gTenv, venv')
+    return (?tenv, venv')
  where
   checkCycles pos name tenv = go [] name
    where
@@ -343,7 +355,7 @@ transDec dec = ask >>= \Context{transM = TranslateM{..}, ..} -> case dec of
       <*> traverse (\(AST.Field pos _ ty _) -> lookTy pos ty tenv) fields
       <*> maybe (pure TUnit) (\(pos, ty) -> lookTy pos ty tenv) rt
 
-transTy :: (MonadIO m, MonadThrow m) => AST.Ty -> TEnv -> m Ty
+transTy :: Semant f a m => AST.Ty (Ref m) -> TEnv (Ref m) -> m (Ty (Ref m))
 transTy (AST.NameTy sym pos) tenv  = lookTy pos sym tenv
 transTy (AST.RecordTy fields) tenv = do
   checkDup $ fmap (\(AST.Field pos name _ _) -> (name, pos)) fields
@@ -353,49 +365,41 @@ transTy (AST.RecordTy fields) tenv = do
   trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv
 transTy (AST.ArrayTy sym pos) tenv = TArray <$> lookTy pos sym tenv <*> mkUnique
 
-runExp :: (MonadIO m, MonadThrow m)
-       => SymbolM m
-       -> TempM m
-       -> TransM Mips.Frame Mips.Access m
-       -> TEnv
-       -> VEnv Mips.Frame Mips.Access
-       -> AST.Exp
-       -> m ExpTy
-runExp symbolM TempM{..} transM@TranslateM{..} tenv venv exp = do
-  mainName <- namedLabel "main"
-  mainLevel <- newLevel (Init Outermost mainName [])
-  let ctx = Context { symbolM = symbolM
-                    , transM  = transM
-                    , gLevel = mainLevel
-                    , gTenv  = tenv
-                    , gVenv  = venv
-                    , gBreak = False
-                    }
-  runReaderT (transExp exp) ctx
+runExp :: (MonadThrow m, Eq1 (Ref m))
+       => ( ?refM    :: RefM (Ref m) m
+          , ?symbolM :: SymbolM m
+          , ?tempM   :: TempM m
+          , ?transM  :: TransM Mips.Frame Mips.Access m
+          )
+       => TEnv (Ref m)
+       -> VEnv (Ref m) Mips.Frame Mips.Access
+       -> AST.Exp (Ref m)
+       -> m (ExpTy (Ref m))
+runExp tenv venv exp = do
+  mainName <- namedLabel ?tempM "main"
+  mainLevel <- newLevel ?transM (Init Outermost mainName [])
+  let { ?level = mainLevel; ?tenv = tenv; ?venv = venv; ?break = False }
+  transExp exp
 
-testTy :: String -> IO ExpTy
-testTy text = do
-  config <- mkConfig
-  let symbolM = mkSymbolM (_symRef config) (_symTable config)
-      tempM   = mkTempM symbolM (_tempRef config)
-      transM  = mkTranslateM tempM (Mips.mkFrameM tempM)
-  (tenv, venv) <- mkEnvs symbolM transM
-  runReaderT (runParserT parseExpr "" text) config >>= \case
+testTy :: String -> IO (ExpTy IORef)
+testTy text = mkContextData >>= \d -> withContextData d $ do
+  let ?tempM = mkTempM ?refM ?symbolM ?tempRef
+  let ?transM = mkTranslateM ?tempM (Mips.mkFrameM ?tempM)
+  (tenv, venv) <- mkEnvs ?symbolM ?transM
+  runMyParserT parseExpr text >>= \case
     Left err  -> throwM err
-    Right exp -> runExp symbolM tempM transM tenv venv exp
+    Right exp -> runExp tenv venv exp
 
-testTySyms :: String -> IO (HM.HashMap String Int, ExpTy)
-testTySyms text = do
-  config <- mkConfig
-  let symbolM = mkSymbolM (_symRef config) (_symTable config)
-      tempM   = mkTempM symbolM (_tempRef config)
-      transM  = mkTranslateM tempM (Mips.mkFrameM tempM)
-  (tenv, venv) <- mkEnvs symbolM transM
-  runReaderT (runParserT (parse config) "" text) config >>= \case
+testTySyms :: String -> IO (HM.HashMap String Int, (ExpTy IORef))
+testTySyms text = mkContextData >>= \d -> withContextData d $ do
+  let ?tempM = mkTempM ?refM ?symbolM ?tempRef
+  let ?transM = mkTranslateM ?tempM (Mips.mkFrameM ?tempM)
+  (tenv, venv) <- mkEnvs ?symbolM ?transM
+  runMyParserT parse text >>= \case
     Left err             -> throwM err
-    Right (exp, symbols) -> (symbols ,)
-                        <$> runExp symbolM tempM transM tenv venv exp
+    Right (exp, symbols) -> (symbols ,) <$> runExp tenv venv exp
  where
-  parse config = (,)
-    <$> parseExpr
-    <*> getSymbols (mkSymbolM (_symRef config) (_symTable config))
+  parse :: Monad m
+        => ParserContext m
+        => Parser m (AST.Exp (Ref m), HM.HashMap String Int)
+  parse = (,) <$> parseExpr <*> lift (getSymbols ?symbolM)
