@@ -3,11 +3,11 @@
 {-# LANGUAGE TypeApplications #-}
 module Chap6.MipsFrame where
 
-import Control.Monad.Catch
-import Control.Monad.Reader
 import Chap6.Frame
 import Chap6.Temp (TempM (..))
 import Chap7.Tree
+import Control.Monad.Catch
+import Control.Monad.Reader
 import Data.Foldable
 import Data.IORef
 import GHC.Records

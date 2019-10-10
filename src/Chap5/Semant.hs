@@ -11,9 +11,6 @@ module Chap5.Semant
   , testTySyms
   ) where
 
-import Control.Monad (forM_, void, when)
-import Control.Monad.Catch
-import Control.Monad.Reader
 import Chap2.Lexer
   ( Parser
   , ParserContext
@@ -27,9 +24,13 @@ import Chap5.Symbol
 import Chap5.Table
 import Chap6.Temp (mkTempM, TempM (namedLabel))
 import Chap6.Translate
+import Control.Monad (forM_, void, when)
+import Control.Monad.Catch
+import Control.Monad.Reader
 import Data.Functor.Classes (Eq1)
 import Data.Maybe (fromMaybe)
 import Data.Foldable (foldlM, foldl')
+
 import qualified Chap3.AST as AST
 import qualified Chap6.MipsFrame as Mips
 import qualified Data.IntMap as IM
@@ -46,15 +47,15 @@ data OpType = Arithmetic -- ^ Operation over two integers
 data Err = Err Pos String deriving (Show)
 instance Exception Err
 
-type Context frame access m
-  = ( ?symbolM :: SymbolM m
-    , ?transM  :: TransM frame access m
-    , ?refM    :: RefM (Ref m) m
-    , ?level   :: Level frame
-    , ?tenv    :: TEnv (Ref m)
-    , ?venv    :: VEnv (Ref m) frame access
-    , ?break   :: Bool
-    )
+type Context frame access m =
+  ( ?symbolM :: SymbolM m
+  , ?transM  :: TransM frame access m
+  , ?refM    :: RefM (Ref m) m
+  , ?level   :: Level frame
+  , ?tenv    :: TEnv (Ref m)
+  , ?venv    :: VEnv (Ref m) frame access
+  , ?break   :: Bool
+  )
 
 type Semant f a m = (MonadThrow m, Eq1 (Ref m), Context f a m)
 

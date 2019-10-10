@@ -10,7 +10,7 @@ import qualified Data.IORef as IORef
 newtype IORef a = IORef { unIORef :: IORef.IORef a } deriving Eq
 newIORef v = IORef <$> IORef.newIORef v
 readIORef (IORef ref) = IORef.readIORef ref
-writeIORef (IORef ref) v = IORef.writeIORef ref v
+writeIORef (IORef ref) = IORef.writeIORef ref
 
 instance Eq1 IORef where
   -- NOTE(DarinM223): uses unsafeCoerce here because

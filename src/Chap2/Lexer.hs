@@ -3,10 +3,10 @@
 {-# LANGUAGE RankNTypes #-}
 module Chap2.Lexer where
 
-import Control.Monad (void)
 import Chap2.Ref
 import Chap5.Symbol
 import Chap6.Temp
+import Control.Monad (void)
 import Data.Char (chr, ord)
 import Data.Maybe (fromJust)
 import Data.Void
