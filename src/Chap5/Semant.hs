@@ -217,10 +217,9 @@ transExp = \case
 
   AST.LetExp (AST.LetExp' _ decs body) -> do
     (tenv', venv') <- foldlM
-      (\(!tenv, !venv) dec -> let { ?tenv = tenv; ?venv = venv }
-                              in transDec dec)
+      (\(!tenv, !venv) dec -> let ?tenv = tenv; ?venv = venv in transDec dec)
       (?tenv, ?venv) decs
-    let { ?tenv = tenv'; ?venv = venv' } in transExp body
+    let ?tenv = tenv'; ?venv = venv' in transExp body
 
   AST.OpExp left op right pos -> do
     ExpTy _ tyleft <- transExp left
@@ -332,8 +331,7 @@ transDec = \case
         venv'
         (zip params (levelFormals ?transM newlevel))
       rty <- maybe (pure TUnit) (\(_, ty) -> lookTy pos ty ?tenv) rt
-      ExpTy _ ty <- let { ?level = newlevel; ?venv = venv'' }
-                    in transExp body
+      ExpTy _ ty <- let ?level = newlevel; ?venv = venv'' in transExp body
       checkTy pos rty ty
     return (?tenv, venv')
  where
@@ -379,8 +377,8 @@ runExp :: (MonadThrow m, Eq1 (Ref m))
 runExp tenv venv exp = do
   mainName <- namedLabel ?tempM "main"
   mainLevel <- newLevel ?transM (Init Outermost mainName [])
-  let { ?level = mainLevel; ?tenv = tenv; ?venv = venv; ?break = False }
-  transExp exp
+  let ?level = mainLevel; ?tenv = tenv; ?venv = venv; ?break = False in
+      transExp exp
 
 testTy :: String -> IO (ExpTy IORef)
 testTy text = mkContextData >>= \d -> withContextData d $ do

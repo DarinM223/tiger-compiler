@@ -38,7 +38,7 @@ mkContextData = do
 
 withContextData :: ParserContextData m -> (ParserContext m => m a) -> m a
 withContextData c f =
-  let { ?symbolM = symbolM c; ?refM = refM c; ?tempRef = tempRef c } in f
+  let ?symbolM = symbolM c; ?refM = refM c; ?tempRef = tempRef c in f
 
 runMyParserT :: ParserContext IO
              => (ParserContext IO => Parser IO a)
