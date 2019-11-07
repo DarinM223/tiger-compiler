@@ -5,6 +5,7 @@
 {-# LANGUAGE TupleSections #-}
 module Chap3.AST where
 
+import Prelude hiding (exp, init)
 import Chap2.Ref
 import Chap5.Symbol
 

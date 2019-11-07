@@ -34,7 +34,7 @@ dependencies:
 - unordered-containers
 
 ghc-options:
-- -W
+- -Wall
 - -Wcompat
 - -Wincomplete-record-updates
 - -Wincomplete-uni-patterns

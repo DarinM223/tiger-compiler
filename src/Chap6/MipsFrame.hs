@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeApplications #-}
 module Chap6.MipsFrame where
 
+import Prelude hiding (init)
 import Chap6.Frame
 import Chap6.Temp (TempM (..))
 import Chap7.Tree

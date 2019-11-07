@@ -11,6 +11,7 @@ module Chap5.Semant
   , testTySyms
   ) where
 
+import Prelude hiding (exp, id, init, map)
 import Chap2.Lexer
   ( Parser
   , ParserContext
@@ -68,22 +69,22 @@ transVar = \case
     ty <- transVar var' >>= \(ExpTy _ var) -> actualTy var
     case ty of
       TRecord fields _ -> case lookup id fields of
-        Just ty -> ExpTy EUnit <$> actualTy ty
-        Nothing -> throwM $ Err pos $ "field " ++ show id ++ " not in record"
+        Just ty2 -> ExpTy EUnit <$> actualTy ty2
+        Nothing  -> throwM $ Err pos $ "field " ++ show id ++ " not in record"
       _ -> throwM $ Err pos "lvalue not a record type"
   AST.SubscriptVar var' exp pos -> do
     ty <- transVar var' >>= \(ExpTy _ var) -> actualTy var
     ExpTy _ expTy <- transExp exp
     checkTy pos TInt expTy
     case ty of
-      TArray ty _ -> return $ ExpTy EUnit ty
-      _           -> throwM $ Err pos "lvalue not an array type"
+      TArray ty2 _ -> return $ ExpTy EUnit ty2
+      _            -> throwM $ Err pos "lvalue not an array type"
 
 -- | Trace through TName types to their underlying definitions.
 actualTy :: Monad m => (?refM :: RefM r m) => Ty r -> m (Ty r)
 actualTy ty@(TName _ (TRef ref)) = readRef ?refM ref >>= \case
-  Just ty -> actualTy ty
-  Nothing -> return ty
+  Just ty2 -> actualTy ty2
+  Nothing  -> return ty
 actualTy ty = return ty
 
 checkTy :: (MonadThrow m, Eq1 r)
@@ -152,17 +153,17 @@ transExp = \case
     return $ ExpTy EUnit TUnit
 
   AST.IfExp (AST.IfExp' pos test thenExp elseExp) -> do
-    ExpTy _ testTy <- transExp test
+    ExpTy _ testTy' <- transExp test
     ExpTy _ thenTy <- transExp thenExp
     elseTy <- traverse (fmap (\(ExpTy _ ty) -> ty) . transExp) elseExp
-    checkTy pos TInt testTy
+    checkTy pos TInt testTy'
     checkTy pos (fromMaybe TUnit elseTy) thenTy
     return $ ExpTy EUnit thenTy
 
   AST.WhileExp (AST.WhileExp' pos test body) -> do
-    ExpTy _ testTy <- transExp test
+    ExpTy _ testTy' <- transExp test
     ExpTy _ bodyTy <- let ?break = True in transExp body
-    checkTy pos TInt testTy
+    checkTy pos TInt testTy'
     checkTy pos TUnit bodyTy
     return $ ExpTy EUnit bodyTy
 
@@ -238,8 +239,8 @@ matchTys :: Semant f a m
          -> [(Symbol, Ty (Ref m))]
          -> [(Pos, Symbol, Ty (Ref m))]
          -> m ()
-matchTys pos l1 l2
-  | length l1 /= length l2 = throwM $ Err pos "Different parameter sizes"
+matchTys _pos l1 l2
+  | length l1 /= length l2 = throwM $ Err _pos "Different parameter sizes"
   | otherwise              = checkMap (buildMap l1) l2
  where
   checkMap map = mapM_ (check map)
@@ -321,11 +322,11 @@ transDec = \case
     -- Then check that the return type is the same as the function's.
     forM_ decs $ \(AST.FunDec pos name params rt body) -> do
       let newlevel = case look name venv' of
-            Just (FunEntry newlevel _ _ _) -> newlevel
+            Just (FunEntry newlevel' _ _ _) -> newlevel'
             _ -> error "Function entry doesn't exist in venv"
       venv'' <- foldlM
-        (\env (AST.Field _ name ty _, access)
-          ->  enter name
+        (\env (AST.Field _ name' ty _, access)
+          ->  enter name'
           <$> (VarEntry access <$> lookTy pos ty ?tenv)
           <*> pure env)
         venv'
@@ -335,7 +336,7 @@ transDec = \case
       checkTy pos rty ty
     return (?tenv, venv')
  where
-  checkCycles pos name tenv = go [] name
+  checkCycles pos _name tenv = go [] _name
    where
     go seen name
       | name `elem` seen = throwM $ Err pos "Cyclical dependency found"
@@ -344,21 +345,21 @@ transDec = \case
           Just (TName sym _) -> go (name:seen) sym
           _                  -> return ()
         _ -> return ()
-  funHeader newLevel tenv name level fields rt = do
-    checkDup $ fmap (\(AST.Field pos name _ _) -> (name, pos)) fields
+  funHeader newLevelFn tenv name level fields rt = do
+    checkDup $ fmap (\(AST.Field pos name' _ _) -> (name', pos)) fields
     escapes <- traverse AST.readEscape
              $ fmap (\(AST.Field _ _ _ esc) -> esc) fields
     FunEntry
-      <$> newLevel (Init level name escapes)
+      <$> newLevelFn (Init level name escapes)
       <*> pure name
       <*> traverse (\(AST.Field pos _ ty _) -> lookTy pos ty tenv) fields
       <*> maybe (pure TUnit) (\(pos, ty) -> lookTy pos ty tenv) rt
 
 transTy :: Semant f a m => AST.Ty (Ref m) -> TEnv (Ref m) -> m (Ty (Ref m))
-transTy (AST.NameTy sym pos) tenv  = lookTy pos sym tenv
-transTy (AST.RecordTy fields) tenv = do
-  checkDup $ fmap (\(AST.Field pos name _ _) -> (name, pos)) fields
-  TRecord <$> trFields fields tenv <*> mkUnique
+transTy (AST.NameTy sym pos) tenv   = lookTy pos sym tenv
+transTy (AST.RecordTy _fields) _tenv = do
+  checkDup $ fmap (\(AST.Field pos name _ _) -> (name, pos)) _fields
+  TRecord <$> trFields _fields _tenv <*> mkUnique
  where
   trFields fields tenv = traverse (trField tenv) fields
   trField tenv (AST.Field pos name tySym _) = (name,) <$> lookTy pos tySym tenv

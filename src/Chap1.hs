@@ -5,8 +5,10 @@ module Chap1
   )
 where
 
+import Prelude hiding (exp, id)
 import Control.Monad
 import Data.Foldable (foldlM)
+import Data.Functor (($>))
 
 type Id = String
 type Env = [(Id, Int)]
@@ -27,7 +29,7 @@ data Exp = IdExp Id
 maxargs :: Stm -> Int
 maxargs (CompoundStm a b  ) = max (maxargs a) (maxargs b)
 maxargs (AssignStm   _ exp) = maxargsExp exp
-maxargs (PrintStm l       ) = max (length l) (maxInList l)
+maxargs (PrintStm exps    ) = max (length exps) (maxInList exps)
  where
   maxInList [] = 0
   maxInList l  = maximum $ fmap maxargsExp l
@@ -44,10 +46,10 @@ evalStmt bindings (CompoundStm a b) = do
 evalStmt bindings (AssignStm id exp) = do
   (value, bindings') <- evalExp bindings exp
   return $ (id, value) : bindings'
-evalStmt bindings (PrintStm exps) = foldlM evalAndPrint bindings exps
+evalStmt _bindings (PrintStm exps) = foldlM evalAndPrint _bindings exps
  where
   evalAndPrint env exp = evalExp env exp >>= printExp
-  printExp (value, bindings) = print value >> return bindings
+  printExp (value, bindings) = print value $> bindings
 
 evalExp :: Env -> Exp -> IO (Int, Env)
 evalExp bindings (IdExp id) = return (lookupValue id bindings, bindings)

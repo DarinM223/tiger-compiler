@@ -8,8 +8,14 @@ import Unsafe.Coerce (unsafeCoerce)
 import qualified Data.IORef as IORef
 
 newtype IORef a = IORef { unIORef :: IORef.IORef a } deriving Eq
+
+newIORef :: a -> IO (IORef a)
 newIORef v = IORef <$> IORef.newIORef v
+
+readIORef :: IORef a -> IO a
 readIORef (IORef ref) = IORef.readIORef ref
+
+writeIORef :: IORef a -> a -> IO ()
 writeIORef (IORef ref) = IORef.writeIORef ref
 
 instance Eq1 IORef where

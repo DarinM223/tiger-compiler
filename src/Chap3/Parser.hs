@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Chap3.Parser where
 
+import Prelude hiding (exp)
 import Chap2.Lexer
 import Chap2.Ref
 import Chap3.AST
@@ -77,14 +78,14 @@ data LFVar' r = LFVarId' !Symbol !Pos (LFVar' r)
 
 -- | Converts the left factored lvalue ast to the proper ast.
 toVar :: LFVar r -> Var r
-toVar (LFVarId sym pos rest) = toVar' (SimpleVar sym pos) rest
+toVar (LFVarId _sym _pos _rest) = toVar' (SimpleVar _sym _pos) _rest
  where
   -- TODO(DarinM223): make sure this is building strictly (look into deepseq)
   toVar' :: Var r -> LFVar' r -> Var r
   toVar' !build = \case
-    LFVarNil                  -> build
-    (LFVarId' sym pos rest)   -> toVar' (FieldVar build sym pos) rest
-    (LFVarExpr expr pos rest) -> toVar' (SubscriptVar build expr pos) rest
+    LFVarNil                 -> build
+    (LFVarId' sym pos rest)  -> toVar' (FieldVar build sym pos) rest
+    (LFVarExpr exp pos rest) -> toVar' (SubscriptVar build exp pos) rest
 
 -- | Parses the left factored grammar for lvalues.
 lfvar :: Monad m => ParserContext m => Parser m (LFVar (Ref m))

@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 module ParserTest (tests) where
 
+import Prelude hiding (exp)
 import Chap2.Lexer
 import Chap3.AST
 import Control.Monad (when)

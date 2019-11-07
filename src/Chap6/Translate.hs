@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 module Chap6.Translate where
 
+import Prelude hiding (exp, init)
 import Chap6.Frame (FrameM (..))
 import Chap6.Temp (TempM (..))
 import Control.Monad.IO.Class
@@ -137,7 +138,7 @@ simpleVar' :: FrameM access frame Tree.Exp m
 simpleVar' FrameM{..} access level = Ex $ go (Tree.Temp fp) level
  where
   (defRef, defAccess) = case access of
-    Access Level{ _ref = defRef } defAccess -> (defRef, defAccess)
+    Access Level{ _ref = _defRef } _defAccess -> (_defRef, _defAccess)
     _ -> error "Invalid pattern Outermost in simpleVar"
   go acc Level{ _parent = parent, _frame = frame, _ref = ref }
     | defRef == ref = frameExp defAccess acc

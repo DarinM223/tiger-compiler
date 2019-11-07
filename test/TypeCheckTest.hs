@@ -42,13 +42,13 @@ testCall = try $ testTy $ "let function add(a : int, b: int): int = a + b\n"
                        ++ "var a : int := 2\n var b := 3 in add(a, b) end"
 
 testTableVals :: [String] -> [Maybe ExpTyIO] -> [TestTree]
-testTableVals ts es = fmap toTestCase $ zip [1..] $ zip ts es
+testTableVals ts es = fmap toTestCase $ zip ([1..] :: [Int]) $ zip ts es
  where toTestCase (n, (t, e)) = testCase (show n) (testExpTy (try (testTy t)) e)
 
 testTableSyms :: [String]
               -> [HM.HashMap String Int -> Maybe ExpTyIO]
               -> [TestTree]
-testTableSyms ts es = fmap toTestCase $ zip [1..] $ zip ts es
+testTableSyms ts es = fmap toTestCase $ zip ([1..] :: [Int]) $ zip ts es
  where
   toTestCase (n, (t, e)) = testCase (show n) runTest
    where
